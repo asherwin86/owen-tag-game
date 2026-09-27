@@ -1,0 +1,25 @@
+{
+  "Statements": [
+    {
+      "Sid": "DenyDirectLeaderboardWrites",
+      "Effect": "Deny",
+      "Principal": "Player",
+      "Action": ["leaderboards:AddPlayerScore", "leaderboards:UpdatePlayerScore"],
+      "Resource": ["urn:ugs:leaderboards:tag_survival_time"]
+    },
+    {
+      "Sid": "AllowCloudCodeLeaderboardWrites",
+      "Effect": "Allow",
+      "Principal": "Service",
+      "Action": ["leaderboards:AddPlayerScore"],
+      "Resource": ["urn:ugs:leaderboards:tag_survival_time"]
+    },
+    {
+      "Sid": "AllowPlayerLeaderboardReads",
+      "Effect": "Allow",
+      "Principal": "Player",
+      "Action": ["leaderboards:GetScores", "leaderboards:GetPlayerScore"],
+      "Resource": ["urn:ugs:leaderboards:tag_survival_time"]
+    }
+  ]
+}

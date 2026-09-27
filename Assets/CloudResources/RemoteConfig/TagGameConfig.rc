@@ -1,0 +1,8 @@
+{
+  "entries": [
+    { "key": "tagger_count", "type": "int", "value": 2, "description": "Number of AI taggers in practice mode / starting taggers in multiplayer" },
+    { "key": "round_duration_seconds", "type": "float", "value": 60, "description": "How long a runner must survive to win the round" },
+    { "key": "tagger_speed_multiplier", "type": "float", "value": 1.0, "description": "Global speed scalar applied to taggers, for live balancing" },
+    { "key": "tag_radius", "type": "float", "value": 1.1, "description": "Distance at which a tag registers" }
+  ]
+}

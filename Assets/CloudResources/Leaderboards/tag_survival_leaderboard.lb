@@ -1,0 +1,7 @@
+{
+  "id": "tag_survival_time",
+  "name": "Longest Survival (Tag)",
+  "sortOrder": "desc",
+  "updateType": "keepBest",
+  "tieBreak": "asc"
+}
