@@ -3,14 +3,16 @@
 # =============================================================================
 
 # Unity-generated folders (all rebuildable from source + Packages/manifest.json)
-[Ll]ibrary/
-[Tt]emp/
-[Oo]bj/
-[Bb]uild/
-[Bb]uilds/
-[Ll]ogs/
-[Uu]ser[Ss]ettings/
-[Mm]emoryCaptures/
+# Anchored to the repo root (leading slash) so a WebGL build output folder
+# named "WebBuild/Build/" elsewhere in the tree is never accidentally matched.
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
 
 # Never ship these
 [Aa]ssets/AssetStoreTools*
