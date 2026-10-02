@@ -64,11 +64,7 @@ namespace TagGame.Gameplay
 
         public void StartRound()
         {
-            foreach (var tagger in _activeTaggers)
-            {
-                if (tagger != null) Destroy(tagger.gameObject);
-            }
-            _activeTaggers.Clear();
+            ClearTaggers();
 
             player.ResetForNewRound();
             _elapsed = 0f;
@@ -82,6 +78,15 @@ namespace TagGame.Gameplay
                 tagger.Initialize(this, player.transform);
                 _activeTaggers.Add(tagger);
             }
+        }
+
+        private void ClearTaggers()
+        {
+            foreach (var tagger in _activeTaggers)
+            {
+                if (tagger != null) Destroy(tagger.gameObject);
+            }
+            _activeTaggers.Clear();
         }
 
         /// <summary>Toggles pause. Freezes gameplay via Time.timeScale so AI, movement and
@@ -121,7 +126,6 @@ namespace TagGame.Gameplay
         public void OnTaggerReachedPlayer(Transform playerTransform)
         {
             if (!RoundInProgress) return;
-            player.MarkTagged();
             EndRound(survived: false);
         }
 
@@ -129,6 +133,10 @@ namespace TagGame.Gameplay
         {
             RoundInProgress = false;
             float survivalTime = _elapsed;
+
+            // Win or lose, remove the bots and send the player back to the lobby circle.
+            ClearTaggers();
+            player.EnterLobby();
 
             OnRoundEnded?.Invoke(survived);
 
