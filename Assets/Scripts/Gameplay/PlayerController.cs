@@ -22,9 +22,17 @@ namespace TagGame.Gameplay
         [SerializeField] private float maxStamina = 4f;
         [SerializeField] private float staminaRegenPerSecond = 1f;
 
+        [Header("Lobby circle (start screen / between rounds)")]
+        [SerializeField] private float lobbyRadius = 2f;
+        [SerializeField] private Color lobbyCircleColor = new Color(1f, 0.92f, 0.25f, 1f);
+
         private CharacterController _controller;
         private float _verticalVelocity;
         private float _stamina;
+        private Vector3 _homePosition;
+        private Quaternion _homeRotation;
+        private bool _confinedToLobby;
+        private GameObject _lobbyCircle;
 
         public float StaminaNormalized => maxStamina <= 0f ? 0f : Mathf.Clamp01(_stamina / maxStamina);
         public bool IsTagged { get; private set; }
@@ -33,6 +41,56 @@ namespace TagGame.Gameplay
         {
             _controller = GetComponent<CharacterController>();
             _stamina = maxStamina;
+            _homePosition = transform.position;
+            _homeRotation = transform.rotation;
+            CreateLobbyCircle();
+            _confinedToLobby = true; // Start screen: stay inside the little circle.
+        }
+
+        /// <summary>Flat disc on the ground marking the lobby area. Reuses the player's
+        /// own material so it still exists in WebGL builds (Shader.Find can be stripped).</summary>
+        private void CreateLobbyCircle()
+        {
+            _lobbyCircle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            _lobbyCircle.name = "LobbyCircle";
+            var col = _lobbyCircle.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+            _lobbyCircle.transform.position = new Vector3(_homePosition.x, 0.02f, _homePosition.z);
+            _lobbyCircle.transform.localScale = new Vector3(lobbyRadius * 2f, 0.01f, lobbyRadius * 2f);
+
+            var circleRenderer = _lobbyCircle.GetComponent<Renderer>();
+            var playerRenderer = GetComponent<Renderer>();
+            if (playerRenderer != null && playerRenderer.sharedMaterial != null)
+            {
+                var mat = new Material(playerRenderer.sharedMaterial) { color = lobbyCircleColor };
+                circleRenderer.sharedMaterial = mat;
+            }
+            circleRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
+        /// <summary>Teleports back to the lobby circle and confines the player to it.</summary>
+        public void EnterLobby()
+        {
+            IsTagged = false;
+            _verticalVelocity = 0f;
+            _confinedToLobby = true;
+            TeleportTo(_homePosition, _homeRotation);
+            if (_lobbyCircle != null) _lobbyCircle.SetActive(true);
+        }
+
+        /// <summary>Lets the player leave the circle (round started).</summary>
+        public void ExitLobby()
+        {
+            _confinedToLobby = false;
+            if (_lobbyCircle != null) _lobbyCircle.SetActive(false);
+        }
+
+        private void TeleportTo(Vector3 position, Quaternion rotation)
+        {
+            // CharacterController overrides transform changes unless disabled first.
+            _controller.enabled = false;
+            transform.SetPositionAndRotation(position, rotation);
+            _controller.enabled = true;
         }
 
         private void Update()
@@ -79,6 +137,18 @@ namespace TagGame.Gameplay
 
             Vector3 motion = worldMove * speed + Vector3.up * _verticalVelocity;
             _controller.Move(motion * Time.deltaTime);
+
+            if (_confinedToLobby)
+            {
+                Vector3 offset = transform.position - _homePosition;
+                offset.y = 0f;
+                if (offset.magnitude > lobbyRadius)
+                {
+                    Vector3 clamped = _homePosition + offset.normalized * lobbyRadius;
+                    clamped.y = transform.position.y;
+                    TeleportTo(clamped, transform.rotation);
+                }
+            }
         }
 
         /// <summary>
@@ -129,6 +199,7 @@ namespace TagGame.Gameplay
             IsTagged = false;
             _stamina = maxStamina;
             _verticalVelocity = 0f;
+            ExitLobby();
         }
     }
 }
