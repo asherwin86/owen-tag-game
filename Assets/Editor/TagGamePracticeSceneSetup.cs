@@ -35,6 +35,8 @@ namespace TagGame.EditorTools
             var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
             ground.name = "Ground";
             ground.transform.localScale = new Vector3(3f, 1f, 3f);
+            var grassMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Grass.mat");
+            if (grassMat != null) ground.GetComponent<Renderer>().sharedMaterial = grassMat;
 
             // 3. Player
             var player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
