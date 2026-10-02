@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using TagGame.Services;
 
 namespace TagGame.Gameplay
@@ -23,9 +24,11 @@ namespace TagGame.Gameplay
         [SerializeField] private float roundDurationSeconds = 60f;
 
         public bool RoundInProgress { get; private set; }
+        public bool IsPaused { get; private set; }
         public float TimeRemaining { get; private set; }
         public event Action<float> OnTimeRemainingChanged;
         public event Action<bool> OnRoundEnded; // true = player survived
+        public event Action<bool> OnPauseChanged; // true = now paused
 
         private readonly List<TaggerAI> _activeTaggers = new List<TaggerAI>();
         private float _elapsed;
@@ -41,6 +44,21 @@ namespace TagGame.Gameplay
                 roundDurationSeconds = config.roundDurationSeconds;
             }
 
+            // Don't auto-start: the Start screen calls BeginGame() once the
+            // player clicks Start, so config has time to arrive first.
+        }
+
+        /// <summary>Called by the Start screen's Start button.</summary>
+        public void BeginGame()
+        {
+            StartRound();
+        }
+
+        /// <summary>Called by the Pause screen's Restart button and the Game Over screen's Play Again button.</summary>
+        public void RestartRound()
+        {
+            Time.timeScale = 1f;
+            IsPaused = false;
             StartRound();
         }
 
@@ -66,9 +84,25 @@ namespace TagGame.Gameplay
             }
         }
 
+        /// <summary>Toggles pause. Freezes gameplay via Time.timeScale so AI, movement and
+        /// the round timer all stop together without each needing its own pause check.</summary>
+        public void TogglePause()
+        {
+            if (!RoundInProgress) return;
+
+            IsPaused = !IsPaused;
+            Time.timeScale = IsPaused ? 0f : 1f;
+            OnPauseChanged?.Invoke(IsPaused);
+        }
+
         private void Update()
         {
-            if (!RoundInProgress)
+            if (RoundInProgress && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                TogglePause();
+            }
+
+            if (!RoundInProgress || IsPaused)
             {
                 return;
             }
