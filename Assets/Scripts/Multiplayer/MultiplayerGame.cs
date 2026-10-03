@@ -26,7 +26,7 @@ namespace TagGame.Multiplayer
         private const string PrefServerMode = "TagGame.MpServerMode"; // 0 official, 1 my own
         private const string PrefCustomUrl = "TagGame.MpCustomUrl";
 
-        [Serializable] private class PInfo { public int id; public string name; public int score; public float x, z, ry; }
+        [Serializable] private class PInfo { public int id; public string name; public int score, wins, color; public float x, z, ry; }
         [Serializable] private class Spawn { public int id; public float x, z; }
         [Serializable]
         private class Msg
@@ -40,6 +40,13 @@ namespace TagGame.Multiplayer
             public string[] winners;
         }
         [Serializable] private class Out { public string t; public string name; public string code; }
+
+        private static readonly Color[] Palette =
+        {
+            new Color(0.2f, 0.85f, 0.9f), new Color(0.95f, 0.35f, 0.35f), new Color(0.4f, 0.85f, 0.35f), new Color(0.98f, 0.8f, 0.2f),
+            new Color(0.75f, 0.45f, 0.95f), new Color(0.98f, 0.55f, 0.2f), new Color(0.95f, 0.5f, 0.8f), new Color(0.95f, 0.95f, 0.95f),
+        };
+        private static Color ColorOf(int i) => Palette[Mathf.Abs(i) % Palette.Length];
 
         private enum Mode { Idle, Menu, Room, Playing }
 
@@ -65,6 +72,11 @@ namespace TagGame.Multiplayer
         // UI
         private GameObject _canvasGo, _menuPanel, _roomPanel, _hud, _resultsPanel, _tagButton, _startRoundButton, _customUrlRow;
         private TMP_InputField _nameInput, _codeInput, _urlInput;
+        private GameObject[] _rowObjs = new GameObject[8];
+        private Image[] _rowSwatch = new Image[8];
+        private TMP_Text[] _rowText = new TMP_Text[8];
+        private GameObject[] _rowKick = new GameObject[8];
+        private int[] _rowId = new int[8];
         private TMP_Text _statusText, _roomCodeText, _playersText, _waitText, _timerText, _scoreText, _feedText,
             _resultsTitle, _resultsList, _serverToggleLabel;
 
@@ -206,6 +218,8 @@ namespace TagGame.Multiplayer
             _mode = Mode.Idle;
             ClearRemotes();
             _player.Frozen = false;
+            var prend = _player.GetComponent<Renderer>();
+            if (prend != null && _playerMaterial != null) prend.sharedMaterial = _playerMaterial;
             _player.EnterLobby();
             _menuPanel.SetActive(false);
             _roomPanel.SetActive(false);
@@ -348,6 +362,9 @@ namespace TagGame.Multiplayer
                 case "miss":
                     Feed("Missed - face someone and get close!", 1f);
                     break;
+                case "kicked":
+                    ConnectionLost("The host removed you from the game.");
+                    break;
                 case "end":
                     EndRound(m);
                     break;
@@ -431,7 +448,8 @@ namespace TagGame.Multiplayer
             if (col != null) Destroy(col);
             var rend = go.GetComponent<Renderer>();
             Material baseMat = _playerMaterial != null ? _playerMaterial : rend.sharedMaterial;
-            var mat = new Material(baseMat) { color = Color.HSVToRGB((p.id * 0.173f) % 1f, 0.65f, 0.95f) };
+            int ci = p.id; foreach (var r0b in _roster) if (r0b.id == p.id) ci = r0b.color;
+            var mat = new Material(baseMat) { color = ColorOf(ci) };
             rend.sharedMaterial = mat;
             go.transform.position = new Vector3(p.x, _baseY, p.z);
             PlayerFace.Attach(go, nm, baseMat);
@@ -457,10 +475,23 @@ namespace TagGame.Multiplayer
         private void RefreshRoomPanel()
         {
             _roomCodeText.text = _roomIsPublic ? "PUBLIC" : _roomCode;
-            var sb = new StringBuilder();
-            foreach (var p in _roster) sb.AppendLine((p.id == _hostId && !_roomIsPublic ? "* " : "") + p.name + (p.id == _myId ? " (you)" : ""));
-            _playersText.text = sb.ToString();
             bool iAmHost = _myId == _hostId && !_roomIsPublic;
+            for (int i = 0; i < 8; i++)
+            {
+                bool has = i < _roster.Length;
+                _rowObjs[i].SetActive(has);
+                if (!has) continue;
+                var p = _roster[i];
+                _rowId[i] = p.id;
+                _rowSwatch[i].color = ColorOf(p.color);
+                _rowText[i].text = (p.id == _hostId && !_roomIsPublic ? "* " : "") + p.name + (p.id == _myId ? " (you)" : "") + "   <color=#FFE15A>" + p.wins + " wins</color>";
+                _rowKick[i].SetActive(iAmHost && p.id != _myId);
+                if (p.id == _myId)
+                {
+                    var rend = _player.GetComponent<Renderer>();
+                    if (rend != null && _playerMaterial != null) rend.material.color = ColorOf(p.color);
+                }
+            }
             _startRoundButton.SetActive(iAmHost);
             _waitText.gameObject.SetActive(!iAmHost);
         }
@@ -487,7 +518,7 @@ namespace TagGame.Multiplayer
             sorted.Sort((a, b) => b.score.CompareTo(a.score));
             var sb = new StringBuilder();
             foreach (var p in sorted)
-                sb.AppendLine((p.id == _myId ? "<color=#FFE15A>" : "") + p.name + "  " + p.score + (p.id == _myId ? "</color>" : ""));
+                sb.AppendLine("<color=#" + ColorUtility.ToHtmlStringRGB(ColorOf(p.color)) + ">" + p.name + "</color>  " + p.score);
             _scoreText.text = sb.ToString();
 
             if (_feedText.text.Length > 0 && Time.unscaledTime > _feedUntil) _feedText.text = "";
@@ -536,19 +567,42 @@ namespace TagGame.Multiplayer
             _roomPanel = MakePanel(root, "RoomPanel", new Color(0f, 0f, 0f, 0.65f));
             var rrt = (RectTransform)_roomPanel.transform;
             rrt.anchorMin = rrt.anchorMax = rrt.pivot = new Vector2(1f, 0.5f);
-            rrt.sizeDelta = new Vector2(420f, 620f);
+            rrt.sizeDelta = new Vector2(420f, 700f);
             rrt.anchoredPosition = new Vector2(-30f, 0f);
             var rp = _roomPanel.transform;
             MakeText(rp, "GAME CODE", 28, T, new Vector2(0, -40), new Vector2(380, 40));
             _roomCodeText = MakeText(rp, "----", 84, T, new Vector2(0, -115), new Vector2(400, 100));
             _roomCodeText.color = new Color(1f, 0.9f, 0.3f);
             MakeText(rp, "Friends: Multiplayer, type this code", 20, T, new Vector2(0, -200), new Vector2(400, 30));
-            _playersText = MakeText(rp, "", 28, T, new Vector2(0, -330), new Vector2(380, 240));
-            _playersText.alignment = TextAlignmentOptions.Top;
-            _startRoundButton = MakeButton(rp, "START GAME", T, new Vector2(0, -490), new Vector2(340, 70), new Color(0.15f, 0.6f, 0.3f),
+            for (int i = 0; i < 8; i++)
+            {
+                int row = i;
+                var rowGo = new GameObject("Row" + i, typeof(RectTransform));
+                rowGo.transform.SetParent(rp, false);
+                var rrow = (RectTransform)rowGo.transform;
+                rrow.anchorMin = rrow.anchorMax = rrow.pivot = T;
+                rrow.anchoredPosition = new Vector2(0, -250 - i * 34);
+                rrow.sizeDelta = new Vector2(390, 32);
+                var sw = new GameObject("Swatch", typeof(RectTransform), typeof(Image));
+                sw.transform.SetParent(rowGo.transform, false);
+                var swr = (RectTransform)sw.transform;
+                swr.anchorMin = swr.anchorMax = swr.pivot = new Vector2(0f, 0.5f);
+                swr.anchoredPosition = new Vector2(6, 0);
+                swr.sizeDelta = new Vector2(22, 22);
+                _rowSwatch[i] = sw.GetComponent<Image>();
+                _rowText[i] = MakeText(rowGo.transform, "", 22, new Vector2(0f, 0.5f), new Vector2(38, 0), new Vector2(270, 30));
+                _rowText[i].alignment = TextAlignmentOptions.Left;
+                _rowText[i].overflowMode = TextOverflowModes.Ellipsis;
+                var kick = MakeButton(rowGo.transform, "Kick", new Vector2(1f, 0.5f), new Vector2(-6, 0), new Vector2(64, 26), new Color(0.7f, 0.2f, 0.2f),
+                    () => GameSocket.Send("{\"t\":\"kick\",\"id\":" + _rowId[row] + "}"), 16);
+                _rowKick[i] = kick.gameObject;
+                _rowObjs[i] = rowGo;
+                rowGo.SetActive(false);
+            }
+            _startRoundButton = MakeButton(rp, "START GAME", T, new Vector2(0, -590), new Vector2(340, 56), new Color(0.15f, 0.6f, 0.3f),
                 () => GameSocket.Send("{\"t\":\"start\"}"), 32).gameObject;
-            _waitText = MakeText(rp, "", 26, T, new Vector2(0, -490), new Vector2(380, 70));
-            MakeButton(rp, "Leave", T, new Vector2(0, -565), new Vector2(340, 50), new Color(0.6f, 0.2f, 0.2f), LeaveRoom, 26);
+            _waitText = MakeText(rp, "", 26, T, new Vector2(0, -590), new Vector2(380, 56));
+            MakeButton(rp, "Leave", T, new Vector2(0, -650), new Vector2(340, 42), new Color(0.6f, 0.2f, 0.2f), LeaveRoom, 26);
             _roomPanel.SetActive(false);
 
             // --- HUD

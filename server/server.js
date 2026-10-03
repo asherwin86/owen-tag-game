@@ -56,7 +56,7 @@ function roomInfo(room) {
     hostId: room.hostId,
     phase: room.phase,
     isPublic: room.isPublic,
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: p.score })),
+    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: p.score, wins: p.wins, color: p.color })),
   };
 }
 
@@ -77,6 +77,9 @@ function addPlayer(room, p) {
   room.players.set(p.id, p);
   p.room = room;
   p.score = 0;
+  p.wins = 0;
+  const used = new Set([...room.players.values()].filter(o => o !== p).map(o => o.color));
+  p.color = 0; while (used.has(p.color)) p.color++;
   p.stunUntil = 0;
   p.lastTagAt = 0;
   p.x = 0; p.z = 0; p.ry = 0;
@@ -123,7 +126,9 @@ function endRound(room) {
   if (room.isPublic) room.nextStart = Date.now() + PUBLIC_BREAK_MS;
   const scores = scoresOf(room).sort((a, b) => b.score - a.score);
   const top = scores.length ? scores[0].score : 0;
-  const winners = scores.filter(s => s.score === top).map(s => s.name);
+  const winnerList = scores.filter(s => s.score === top && top > 0);
+  for (const w of winnerList) { const wp = room.players.get(w.id); if (wp) wp.wins++; }
+  const winners = winnerList.map(s => s.name);
   broadcast(room, { t: 'end', scores, winners });
   broadcast(room, roomInfo(room));
 }
@@ -237,6 +242,15 @@ wss.on('connection', (ws) => {
         if (!room || room.isPublic || room.hostId !== p.id || room.phase !== 'lobby') return;
         if (room.players.size < 2) { send(ws, { t: 'err', msg: 'Need at least 2 players to start.' }); return; }
         startRound(room);
+        break;
+      }
+      case 'kick': {
+        const room = p.room;
+        if (!room || room.isPublic || room.hostId !== p.id) return;
+        const target = room.players.get(Number(m.id));
+        if (!target || target.id === p.id) return;
+        send(target.ws, { t: 'kicked' });
+        removePlayer(target);
         break;
       }
       case 'leave': removePlayer(p); break;

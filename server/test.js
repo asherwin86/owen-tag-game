@@ -56,6 +56,13 @@ server.listen(0, async () => {
     await sleep(700);
     a.send({ t: 'tag' });
     await a.wait('miss');
+    // colours, wins, kick
+    assert.notStrictEqual(room.players[0].color, undefined);
+    const r2 = await a.wait('room').catch(() => null);
+    b.send({ t: 'kick', id: ja.id }); await sleep(100);
+    a.send({ t: 'kick', id: jb.id });
+    await b.wait('kicked');
+    console.log('kick ok');
     // public game: two players join, round auto-starts
     const c = client(port), d = client(port);
     await c.open(); await d.open();
