@@ -539,9 +539,9 @@ namespace TagGame.Multiplayer
             rrt.anchoredPosition = new Vector2(-30f, 0f);
             var rp = _roomPanel.transform;
             MakeText(rp, "GAME CODE", 28, T, new Vector2(0, -40), new Vector2(380, 40));
-            _roomCodeText = MakeText(rp, "----", 84, T, new Vector2(0, -105), new Vector2(400, 100));
+            _roomCodeText = MakeText(rp, "----", 84, T, new Vector2(0, -115), new Vector2(400, 100));
             _roomCodeText.color = new Color(1f, 0.9f, 0.3f);
-            MakeText(rp, "Friends: Multiplayer, type this code", 20, T, new Vector2(0, -165), new Vector2(400, 30));
+            MakeText(rp, "Friends: Multiplayer, type this code", 20, T, new Vector2(0, -200), new Vector2(400, 30));
             _playersText = MakeText(rp, "", 28, T, new Vector2(0, -330), new Vector2(380, 240));
             _playersText.alignment = TextAlignmentOptions.Top;
             _startRoundButton = MakeButton(rp, "START GAME", T, new Vector2(0, -490), new Vector2(340, 70), new Color(0.15f, 0.6f, 0.3f),
