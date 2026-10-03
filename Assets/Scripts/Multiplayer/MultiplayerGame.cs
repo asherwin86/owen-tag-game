@@ -21,7 +21,7 @@ namespace TagGame.Multiplayer
     public class MultiplayerGame : MonoBehaviour
     {
         // Public game server (a second Render service). Change if you host it elsewhere.
-        public const string OfficialServerUrl = "wss://tag-game-server.onrender.com";
+        public const string OfficialServerUrl = "wss://tag-game-server-zsyy.onrender.com";
         private const string PrefName = "TagGame.MpName";
         private const string PrefServerMode = "TagGame.MpServerMode"; // 0 official, 1 my own
         private const string PrefCustomUrl = "TagGame.MpCustomUrl";
