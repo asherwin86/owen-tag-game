@@ -177,6 +177,12 @@ namespace TagGame.Gameplay
                 move = gamepad.leftStick.ReadValue();
             }
 
+            // On-screen joystick (touch devices).
+            if (move.sqrMagnitude < 0.01f)
+            {
+                move = MobileControls.MoveInput;
+            }
+
             return move;
         }
 
@@ -184,7 +190,7 @@ namespace TagGame.Gameplay
         {
             bool keyboardSprint = Keyboard.current != null && Keyboard.current.leftShiftKey.isPressed;
             bool gamepadSprint = Gamepad.current != null && Gamepad.current.leftShoulder.isPressed;
-            return keyboardSprint || gamepadSprint;
+            return keyboardSprint || gamepadSprint || MobileControls.SprintHeld;
         }
 
         /// <summary>Called by TagGameManager when a Tagger touches this player.</summary>
