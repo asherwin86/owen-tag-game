@@ -85,7 +85,11 @@ namespace TagGame.Gameplay
             if (_lobbyCircle != null) _lobbyCircle.SetActive(false);
         }
 
-        private void TeleportTo(Vector3 position, Quaternion rotation)
+        /// <summary>Set by multiplayer while the player is stunned.</summary>
+        public bool Frozen { get; set; }
+        public Vector3 HomePosition => _homePosition;
+
+        public void TeleportTo(Vector3 position, Quaternion rotation)
         {
             // CharacterController overrides transform changes unless disabled first.
             _controller.enabled = false;
@@ -95,7 +99,7 @@ namespace TagGame.Gameplay
 
         private void Update()
         {
-            if (IsTagged)
+            if (IsTagged || Frozen)
             {
                 return; // Frozen once tagged; TagGameManager decides what happens next.
             }

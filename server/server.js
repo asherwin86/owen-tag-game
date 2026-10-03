@@ -14,6 +14,9 @@ const TAG_COOLDOWN_MS = 600;    // tagger can't spam
 const STUN_MS = 1500;           // a tagged player can't tag back for a moment
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O
 
+const PUBLIC_CODE = 'PUBLIC';
+const PUBLIC_COUNTDOWN_MS = 6000;   // public game: wait this long once 2+ players are in
+const PUBLIC_BREAK_MS = 8000;       // public game: pause between rounds
 const rooms = new Map(); // code -> room
 let nextId = 1;
 
@@ -52,6 +55,7 @@ function roomInfo(room) {
     code: room.code,
     hostId: room.hostId,
     phase: room.phase,
+    isPublic: room.isPublic,
     players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: p.score })),
   };
 }
@@ -60,10 +64,10 @@ function scoresOf(room) {
   return [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: p.score }));
 }
 
-function createRoom(host) {
-  const code = makeCode();
+function createRoom(host, isPublic) {
+  const code = isPublic ? PUBLIC_CODE : makeCode();
   if (!code) return null;
-  const room = { code, hostId: host.id, phase: 'lobby', players: new Map(), endsAt: 0, timer: null, tick: null };
+  const room = { code, isPublic: !!isPublic, hostId: isPublic ? 0 : host.id, phase: 'lobby', players: new Map(), endsAt: 0, nextStart: 0, timer: null, tick: null };
   rooms.set(code, room);
   room.tick = setInterval(() => tickRoom(room), 1000 / TICK_HZ);
   return room;
@@ -89,7 +93,7 @@ function removePlayer(p) {
     rooms.delete(room.code);
     return;
   }
-  if (room.hostId === p.id) room.hostId = room.players.keys().next().value; // host leaves -> next player hosts
+  if (!room.isPublic && room.hostId === p.id) room.hostId = room.players.keys().next().value; // host leaves -> next player hosts
   broadcast(room, roomInfo(room));
   if (room.phase === 'playing' && room.players.size < 2) endRound(room);
 }
@@ -106,7 +110,8 @@ function startRound(room) {
     p.spawn = { x: Math.cos(angle) * 9, z: Math.sin(angle) * 9 };
     i++;
   }
-  broadcast(room, { t: 'start', duration: ROUND_SECONDS, spawns: [...room.players.values()].map(p => ({ id: p.id, x: p.spawn.x, z: p.spawn.z })) });
+  room.nextStart = 0;
+  broadcast(room, { t: 'start', duration: ROUND_SECONDS, left: ROUND_SECONDS, spawns: [...room.players.values()].map(p => ({ id: p.id, x: p.spawn.x, z: p.spawn.z })) });
   broadcast(room, roomInfo(room));
   room.timer = setTimeout(() => endRound(room), ROUND_SECONDS * 1000);
 }
@@ -115,6 +120,7 @@ function endRound(room) {
   if (room.phase !== 'playing') return;
   clearTimeout(room.timer);
   room.phase = 'lobby';
+  if (room.isPublic) room.nextStart = Date.now() + PUBLIC_BREAK_MS;
   const scores = scoresOf(room).sort((a, b) => b.score - a.score);
   const top = scores.length ? scores[0].score : 0;
   const winners = scores.filter(s => s.score === top).map(s => s.name);
@@ -126,6 +132,15 @@ function tickRoom(room) {
   const players = [...room.players.values()].map(p => ({ id: p.id, x: p.x, z: p.z, ry: p.ry }));
   const msg = { t: 'snap', players };
   if (room.phase === 'playing') msg.left = Math.max(0, (room.endsAt - Date.now()) / 1000);
+  if (room.isPublic && room.phase === 'lobby') {
+    if (room.players.size >= 2) {
+      if (!room.nextStart) room.nextStart = Date.now() + PUBLIC_COUNTDOWN_MS;
+      msg.next = Math.max(0, (room.nextStart - Date.now()) / 1000);
+      if (Date.now() >= room.nextStart) { startRound(room); return; }
+    } else {
+      room.nextStart = 0;
+    }
+  }
   broadcast(room, msg);
 }
 
@@ -178,13 +193,29 @@ wss.on('connection', (ws) => {
         broadcast(room, roomInfo(room));
         break;
       }
+      case 'joinpublic': {
+        if (p.room) return;
+        let room = rooms.get(PUBLIC_CODE) || createRoom(p, true);
+        if (room.players.size >= MAX_PLAYERS) { send(ws, { t: 'err', msg: 'The public game is full, try again soon.' }); return; }
+        p.name = cleanName(m.name);
+        addPlayer(room, p);
+        send(ws, { t: 'joined', id: p.id });
+        if (room.phase === 'playing') {
+          const a = Math.random() * Math.PI * 2;
+          p.spawn = { x: Math.cos(a) * 9, z: Math.sin(a) * 9 };
+          send(ws, { t: 'start', duration: ROUND_SECONDS, left: Math.max(0, (room.endsAt - Date.now()) / 1000), spawns: [{ id: p.id, x: p.spawn.x, z: p.spawn.z }] });
+        }
+        broadcast(room, roomInfo(room));
+        break;
+      }
       case 'join': {
         if (p.room) return;
         const code = String(m.code || '').toUpperCase().trim();
+        if (code === PUBLIC_CODE) { send(ws, { t: 'err', msg: 'Use the public game button for that one.' }); return; }
         const room = rooms.get(code);
         if (!room) { send(ws, { t: 'err', msg: 'No game with that code.' }); return; }
         if (room.players.size >= MAX_PLAYERS) { send(ws, { t: 'err', msg: 'That game is full.' }); return; }
-        if (room.phase === 'playing') { send(ws, { t: 'err', msg: 'That game already started, try again soon.' }); return; }
+        if (room.phase === 'playing' && !room.isPublic) { send(ws, { t: 'err', msg: 'That game already started, try again soon.' }); return; }
         p.name = cleanName(m.name);
         addPlayer(room, p);
         send(ws, { t: 'joined', id: p.id });
@@ -203,7 +234,7 @@ wss.on('connection', (ws) => {
       case 'tag': handleTag(p); break;
       case 'start': {
         const room = p.room;
-        if (!room || room.hostId !== p.id || room.phase !== 'lobby') return;
+        if (!room || room.isPublic || room.hostId !== p.id || room.phase !== 'lobby') return;
         if (room.players.size < 2) { send(ws, { t: 'err', msg: 'Need at least 2 players to start.' }); return; }
         startRound(room);
         break;
@@ -225,6 +256,15 @@ setInterval(() => {
   }
 }, 20000);
 
-if (require.main === module) server.listen(PORT, () => console.log('Tag Game server listening on ' + PORT));
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log('Tag Game server listening on port ' + PORT);
+    console.log('  On this computer, use the address:  ws://localhost:' + PORT);
+    const nets = require('os').networkInterfaces();
+    for (const name of Object.keys(nets)) for (const n of nets[name]) {
+      if (n.family === 'IPv4' && !n.internal) console.log('  Friends on your Wi-Fi/network use:  ws://' + n.address + ':' + PORT);
+    }
+  });
+}
 
 module.exports = { server, wss, rooms };

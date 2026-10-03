@@ -28,6 +28,9 @@ namespace TagGame.UI
         [SerializeField] private TMP_Text gameOverText;
         [SerializeField] private Button playAgainButton;
 
+        public GameObject StartPanel => startPanel;
+        public Button StartButton => startButton;
+
         private void Awake()
         {
             startButton.onClick.AddListener(HandleStartClicked);

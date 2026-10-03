@@ -56,6 +56,14 @@ server.listen(0, async () => {
     await sleep(700);
     a.send({ t: 'tag' });
     await a.wait('miss');
+    // public game: two players join, round auto-starts
+    const c = client(port), d = client(port);
+    await c.open(); await d.open();
+    c.send({ t: 'joinpublic', name: 'Cy' }); await c.wait('joined');
+    d.send({ t: 'joinpublic', name: 'Di' }); await d.wait('joined');
+    const st = await c.wait('start', 12000);
+    assert(st.left > 50);
+    console.log('public auto-start ok');
     console.log('ALL TESTS PASSED');
     process.exit(0);
   } catch (e) { console.error('FAIL', e); process.exit(1); }
