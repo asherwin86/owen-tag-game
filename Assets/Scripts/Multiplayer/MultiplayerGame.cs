@@ -268,8 +268,9 @@ namespace TagGame.Multiplayer
             _nextSend = Time.unscaledTime + 1f / 15f;
             var p = _player.transform.position;
             float ry = _player.transform.eulerAngles.y * Mathf.Deg2Rad;
-            GameSocket.Send(string.Format(CultureInfo.InvariantCulture,
-                "{{\"t\":\"state\",\"x\":{0:F2},\"z\":{1:F2},\"ry\":{2:F3}}}", p.x, p.z, ry));
+            var inv = CultureInfo.InvariantCulture;
+            GameSocket.Send("{\"t\":\"state\",\"x\":" + p.x.ToString("F2", inv) + ",\"z\":" + p.z.ToString("F2", inv)
+                + ",\"ry\":" + ry.ToString("F3", inv) + "}");
         }
 
         private void UpdateInput()
