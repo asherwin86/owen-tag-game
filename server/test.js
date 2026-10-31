@@ -85,6 +85,33 @@ server.listen(0, async () => {
     const st = await c.wait('start', 12000);
     assert(st.left > 50); assert(st.map >= 0 && st.map <= 2);
     console.log('public auto-start ok');
+    // spectating: list, watch the public game, opt out, practice streams
+    const w = client(port); await w.open();
+    w.send({ t: 'list' });
+    const l1 = await w.wait('list');
+    const pub = l1.items.find(i => i.kind === 'room');
+    assert(pub && pub.players === 2, 'public game listed with 2 players');
+    w.send({ t: 'watch', key: pub.key });
+    const v1 = await w.wait('view');
+    assert.strictEqual(v1.players.length, 2); assert.strictEqual(v1.hidden, 0);
+    c.send({ t: 'spectate', on: false }); await sleep(300);
+    w.msgs.length = 0;
+    const v2 = await w.wait('view');
+    assert.strictEqual(v2.players.length, 1, 'opted-out player is hidden'); assert.strictEqual(v2.hidden, 1);
+    const pr = client(port); await pr.open();
+    pr.send({ t: 'pstate', name: 'Owen', map: 1, it: 2, left: 80, e: [{ n: 'You', x: 1, z: 2, ry: 0, s: 5, p: true }, { n: 'Tiger 1', x: 9999, z: -4, ry: 1, s: 3 }, { n: 'Tiger 2', x: 3, z: 3, ry: 2, s: 0 }] });
+    await sleep(200);
+    w.send({ t: 'list' }); w.msgs.length = 0;
+    const l2 = await w.wait('list');
+    const prac = l2.items.find(i => i.kind === 'practice');
+    assert(prac && prac.players === 3 && prac.map === 1, 'practice listed');
+    w.send({ t: 'watch', key: prac.key });
+    w.msgs.length = 0;
+    const v3 = await w.wait('view');
+    assert.strictEqual(v3.it, 2); assert(v3.players[1].x <= 90, 'position clamped');
+    pr.send({ t: 'pend' }); await sleep(250);
+    const v4 = await w.wait('viewend');
+    console.log('spectate ok');
     console.log('ALL TESTS PASSED');
     process.exit(0);
   } catch (e) { console.error('FAIL', e); process.exit(1); }
