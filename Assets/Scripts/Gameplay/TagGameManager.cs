@@ -166,6 +166,34 @@ namespace TagGame.Gameplay
             return true;
         }
 
+        /// <summary>One line of JSON describing the round for spectators (see server 'pstate').</summary>
+        public string SpectateJson(string playerName, int map)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var sb = new StringBuilder();
+            int idx = 0, itIdx = -1;
+            sb.Append("{\"t\":\"pstate\",\"name\":\"").Append(playerName).Append("\",\"map\":").Append(map)
+              .Append(",\"left\":").Append(TimeRemaining.ToString("F1", inv)).Append(",\"e\":[");
+            void Add(Transform t, string n, bool isPlayer)
+            {
+                if (t == null) return;
+                if (idx > 0) sb.Append(',');
+                _safe.TryGetValue(t, out float sc);
+                sb.Append("{\"n\":\"").Append(n).Append("\",\"x\":").Append(t.position.x.ToString("F1", inv))
+                  .Append(",\"z\":").Append(t.position.z.ToString("F1", inv))
+                  .Append(",\"ry\":").Append((t.eulerAngles.y * Mathf.Deg2Rad).ToString("F2", inv))
+                  .Append(",\"s\":").Append(Mathf.FloorToInt(sc));
+                if (isPlayer) sb.Append(",\"p\":1");
+                sb.Append('}');
+                if (t == ItTransform) itIdx = idx;
+                idx++;
+            }
+            Add(player.transform, "You", true);
+            foreach (var tg in _activeTaggers) if (tg != null) Add(tg.transform, tg.DisplayName, false);
+            sb.Append("],\"it\":").Append(itIdx).Append('}');
+            return sb.ToString();
+        }
+
         // ------------------------------------------------------------------ pause / loop
 
         public void TogglePause()

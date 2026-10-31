@@ -10,6 +10,7 @@ using UnityEngine.UI;
 using TagGame.Gameplay;
 using TagGame.UI;
 using TagGame.Maps;
+using TagGame.Spectate;
 
 namespace TagGame.Multiplayer
 {
@@ -42,12 +43,12 @@ namespace TagGame.Multiplayer
         }
         [Serializable] private class Out { public string t; public string name; public string code; public int map; }
 
-        private static readonly Color[] Palette =
+        internal static readonly Color[] Palette =
         {
             new Color(0.2f, 0.85f, 0.9f), new Color(0.95f, 0.35f, 0.35f), new Color(0.4f, 0.85f, 0.35f), new Color(0.98f, 0.8f, 0.2f),
             new Color(0.75f, 0.45f, 0.95f), new Color(0.98f, 0.55f, 0.2f), new Color(0.95f, 0.5f, 0.8f), new Color(0.95f, 0.95f, 0.95f),
         };
-        private static Color ColorOf(int i) => Palette[Mathf.Abs(i) % Palette.Length];
+        internal static Color ColorOf(int i) => Palette[Mathf.Abs(i) % Palette.Length];
 
         private enum Mode { Idle, Menu, Room, Playing }
 
@@ -73,7 +74,7 @@ namespace TagGame.Multiplayer
         private readonly Dictionary<int, GameObject> _markers = new Dictionary<int, GameObject>();
         private Image[] _voteBg = new Image[MapManager.Count];
         private TMP_Text[] _voteText = new TMP_Text[MapManager.Count];
-        private TMP_Text _roleText;
+        private TMP_Text _roleText, _specLabel;
 
         // UI
         private GameObject _canvasGo, _menuPanel, _roomPanel, _hud, _resultsPanel, _tagButton, _startRoundButton, _customUrlRow;
@@ -134,6 +135,7 @@ namespace TagGame.Multiplayer
             _statusText.text = "";
             _nameInput.text = PlayerPrefs.GetString(PrefName, "");
             UpdateServerToggle();
+            if (_specLabel != null) _specLabel.text = SpectateSettings.Label;
             StartConnect(); // connect early so a sleeping free server has time to wake up
         }
 
@@ -199,6 +201,13 @@ namespace TagGame.Multiplayer
             _pending = o;
             _statusText.text = "Connecting...";
             if (GameSocket.State == GameSocket.Closed) StartConnect();
+        }
+
+        private void ToggleSpectate()
+        {
+            SpectateSettings.Allow = !SpectateSettings.Allow;
+            _specLabel.text = SpectateSettings.Label;
+            GameSocket.Send("{\"t\":\"spectate\",\"on\":" + (SpectateSettings.Allow ? "true" : "false") + "}");
         }
 
         private void MenuBack()
@@ -337,6 +346,7 @@ namespace TagGame.Multiplayer
                 case "joined":
                     _myId = m.id;
                     _mode = Mode.Room;
+                    GameSocket.Send("{\"t\":\"spectate\",\"on\":" + (SpectateSettings.Allow ? "true" : "false") + "}");
                     _menuPanel.SetActive(false);
                     _roomPanel.SetActive(true);
                     _scores = new PInfo[0];
@@ -633,6 +643,8 @@ namespace TagGame.Multiplayer
             _urlInput = MakeInput(_customUrlRow.transform, "ws://192.168.1.5:8080", C, new Vector2(0, -210), new Vector2(520, 48), 80, false);
             _statusText = MakeText(mp, "", 24, C, new Vector2(0, -275), new Vector2(1000, 60));
             MakeButton(mp, "Back", C, new Vector2(0, -330), new Vector2(220, 50), new Color(0.5f, 0.2f, 0.2f), MenuBack, 26);
+            var specBtn = MakeButton(mp, SpectateSettings.Label, C, new Vector2(0, -395), new Vector2(420, 44), new Color(0.25f, 0.25f, 0.3f, 0.95f), ToggleSpectate, 22);
+            _specLabel = specBtn.GetComponentInChildren<TMP_Text>();
             _menuPanel.SetActive(false);
 
             // --- room (right side, so you can still run around the lobby circle)
@@ -711,19 +723,19 @@ namespace TagGame.Multiplayer
             _resultsPanel.SetActive(false);
         }
 
-        private static readonly Vector2 C = new Vector2(0.5f, 0.5f);
-        private static readonly Vector2 T = new Vector2(0.5f, 1f);
-        private static readonly Vector2 TL = new Vector2(0f, 1f);
-        private static readonly Vector2 BR = new Vector2(1f, 0f);
+        internal static readonly Vector2 C = new Vector2(0.5f, 0.5f);
+        internal static readonly Vector2 T = new Vector2(0.5f, 1f);
+        internal static readonly Vector2 TL = new Vector2(0f, 1f);
+        internal static readonly Vector2 BR = new Vector2(1f, 0f);
 
-        private static void Stretch(RectTransform rt)
+        internal static void Stretch(RectTransform rt)
         {
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
         }
 
-        private static GameObject MakePanel(Transform parent, string name, Color color)
+        internal static GameObject MakePanel(Transform parent, string name, Color color)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image));
             go.transform.SetParent(parent, false);
@@ -732,7 +744,7 @@ namespace TagGame.Multiplayer
             return go;
         }
 
-        private static TMP_Text MakeText(Transform parent, string text, float size, Vector2 anchor, Vector2 pos, Vector2 dim)
+        internal static TMP_Text MakeText(Transform parent, string text, float size, Vector2 anchor, Vector2 pos, Vector2 dim)
         {
             var go = new GameObject("Text", typeof(RectTransform));
             go.transform.SetParent(parent, false);
@@ -750,7 +762,7 @@ namespace TagGame.Multiplayer
             return t;
         }
 
-        private static Button MakeButton(Transform parent, string label, Vector2 anchor, Vector2 pos, Vector2 dim, Color color, UnityAction onClick, float fontSize)
+        internal static Button MakeButton(Transform parent, string label, Vector2 anchor, Vector2 pos, Vector2 dim, Color color, UnityAction onClick, float fontSize)
         {
             var go = new GameObject(label + "Button", typeof(RectTransform), typeof(Image), typeof(Button));
             go.transform.SetParent(parent, false);
@@ -768,7 +780,7 @@ namespace TagGame.Multiplayer
             return btn;
         }
 
-        private static TMP_InputField MakeInput(Transform parent, string placeholder, Vector2 anchor, Vector2 pos, Vector2 dim, int maxLen, bool upper)
+        internal static TMP_InputField MakeInput(Transform parent, string placeholder, Vector2 anchor, Vector2 pos, Vector2 dim, int maxLen, bool upper)
         {
             var go = new GameObject("Input", typeof(RectTransform), typeof(Image));
             go.transform.SetParent(parent, false);

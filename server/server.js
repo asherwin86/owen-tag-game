@@ -24,6 +24,10 @@ const PUBLIC_CODE = 'PUBLIC';
 const PUBLIC_COUNTDOWN_MS = FAST ? 1500 : 15000;   // public game: wait this long once 2+ players are in
 const PUBLIC_BREAK_MS = FAST ? 300 : 8000;       // public game: pause between rounds
 const rooms = new Map(); // code -> room
+const practice = new Map(); // player id -> live Practice session someone is streaming for spectators
+const watchers = new Set(); // connections currently spectating something
+const VIEW_HZ = 10;
+const MAX_PRACTICE_ENTITIES = 24;
 let nextId = 1;
 
 const server = http.createServer((req, res) => {
@@ -92,6 +96,7 @@ function addPlayer(room, p) {
   p.color = 0; while (used.has(p.color)) p.color++;
   p.stunUntil = 0;
   p.lastTagAt = 0;
+  if (p.spectate === undefined) p.spectate = true;   // others may watch you (you can switch this off)
   p.x = 0; p.z = 0; p.ry = 0;
 }
 
@@ -228,6 +233,58 @@ function handleTag(p) {
   broadcast(room, { t: 'tagged', by: p.id, target: best.id, it: best.id, byName: p.name, targetName: best.name, stunMs: STUN_MS, scores: scoresOf(room) });
 }
 
+// ---------------------------------------------------------------- spectating
+// Watchers connect with the same WebSocket and ask for a list of live games, then pick one.
+// Public room players and Practice runs are listed while "allow spectators" is on (the default).
+// A private room is never listed; you need its code to watch it.
+function liveList() {
+  const items = [];
+  for (const room of rooms.values()) {
+    if (!room.isPublic) continue;
+    const shown = [...room.players.values()].filter(p => p.spectate !== false);
+    if (!shown.length) continue;
+    items.push({ key: 'room:' + room.code, kind: 'room', label: 'Public game', map: room.map, players: shown.length, phase: room.phase });
+  }
+  for (const [id, s] of practice) {
+    items.push({ key: 'practice:' + id, kind: 'practice', label: s.name + "'s Practice", map: s.map, players: s.e.length, phase: 'playing' });
+  }
+  return items;
+}
+
+function viewOf(key) {
+  if (key.startsWith('room:')) {
+    const room = rooms.get(key.slice(5));
+    if (!room) return null;
+    const all = [...room.players.values()];
+    const shown = all.filter(p => p.spectate !== false);
+    return {
+      t: 'view', key, kind: 'room', label: room.isPublic ? 'Public game' : 'Room ' + room.code,
+      map: room.map, phase: room.phase, it: room.itId || 0, left: room.phase === 'playing' ? Math.max(0, (room.endsAt - Date.now()) / 1000) : 0,
+      hidden: all.length - shown.length,
+      players: shown.map(p => ({ id: p.id, n: p.name, x: +p.x.toFixed(1), z: +p.z.toFixed(1), ry: +(p.ry || 0).toFixed(2), score: Math.floor(p.score), c: p.color })),
+    };
+  }
+  if (key.startsWith('practice:')) {
+    const sess = practice.get(Number(key.slice(9)));
+    if (!sess) return null;
+    return { t: 'view', key, kind: 'practice', label: sess.name + "'s Practice", map: sess.map, phase: 'playing', it: sess.it, left: sess.left, hidden: 0, players: sess.e };
+  }
+  return null;
+}
+
+setInterval(() => {
+  const cache = new Map();
+  for (const w of watchers) {
+    if (!w.watch || w.ws.readyState !== 1) continue;
+    if (!cache.has(w.watch)) cache.set(w.watch, viewOf(w.watch));
+    const v = cache.get(w.watch);
+    if (v) send(w.ws, v); else { send(w.ws, { t: 'viewend', key: w.watch }); w.watch = null; }
+  }
+}, 1000 / VIEW_HZ);
+
+function num(v, lim) { return Number.isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0; }
+function endPractice(p) { practice.delete(p.id); }
+
 wss.on('connection', (ws) => {
   const p = { id: nextId++, ws, name: '', room: null };
   ws.isAlive = true;
@@ -290,6 +347,27 @@ wss.on('connection', (ws) => {
         }
         break;
       }
+      case 'spectate': { p.spectate = m.on !== false; break; }
+      case 'pstate': {
+        // A Practice game streams itself here so people can watch. Same checks as everything else: clamp and cap.
+        if (p.room || m.on === false) { endPractice(p); break; }
+        if (!Array.isArray(m.e)) break;
+        const map = Number.isInteger(m.map) && m.map >= 0 && m.map < MAP_COUNT ? m.map : 0;
+        const lim = MAP_LIMIT[map];
+        const e = m.e.slice(0, MAX_PRACTICE_ENTITIES).map((q, i) => ({ id: i, n: cleanName(q.n), x: +num(q.x, lim).toFixed(1), z: +num(q.z, lim).toFixed(1), ry: +num(q.ry, 7).toFixed(2), score: Math.max(0, Math.min(9999, Math.floor(Number(q.s) || 0))), c: q.p ? 0 : 1 }));
+        if (!p.name) p.name = cleanName(m.name);
+        practice.set(p.id, { name: p.name || cleanName(m.name), map, it: Math.max(-1, Math.min(MAX_PRACTICE_ENTITIES, Math.floor(Number(m.it)))), left: Math.max(0, Math.min(600, Number(m.left) || 0)), e, at: Date.now() });
+        break;
+      }
+      case 'pend': endPractice(p); break;
+      case 'list': watchers.add(p); send(ws, { t: 'list', items: liveList() }); break;
+      case 'watch': {
+        const key = m.code ? 'room:' + String(m.code).toUpperCase().trim() : String(m.key || '');
+        if (!viewOf(key)) { send(ws, { t: 'err', msg: 'Nothing to watch there.' }); break; }
+        watchers.add(p); p.watch = key;
+        break;
+      }
+      case 'unwatch': p.watch = null; break;
       case 'tag': handleTag(p); break;
       case 'vote': {
         const room = p.room;
@@ -319,9 +397,12 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => removePlayer(p));
+  ws.on('close', () => { removePlayer(p); endPractice(p); watchers.delete(p); });
   ws.on('error', () => {});
 });
+
+// Practice runs that stopped sending drop off the list.
+setInterval(() => { const t = Date.now(); for (const [id, s] of practice) if (t - s.at > 6000) practice.delete(id); }, 2000);
 
 // Drop dead connections (phones that went to sleep, etc.).
 setInterval(() => {

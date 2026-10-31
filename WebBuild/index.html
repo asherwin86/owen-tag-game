@@ -172,6 +172,35 @@ nav .links a.on{background:var(--line);color:var(--ink)}
 .roomcode{display:inline-flex;gap:8px;margin-block:4px}
 .roomcode span{width:46px;height:56px;display:grid;place-items:center;font:800 32px var(--display);background:var(--bg);border:3px solid var(--line);border-radius:10px;color:var(--sun)}
 @media (max-width:560px){.topbar nav .links a{padding:6px 9px;font-size:14px}}
+.watch{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:20px;align-items:start}
+.watch-side,.watch-main{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.watch-status{font-weight:800;color:var(--muted);font-size:15px}
+.watch-status.ok{color:var(--grass)}
+.watch-list{display:flex;flex-direction:column;gap:8px;min-height:20px}
+.gitem{display:flex;justify-content:space-between;gap:10px;align-items:center;text-align:left;font:800 16px var(--body);color:var(--ink);background:var(--bg);border:2px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;min-width:0}
+.gitem:hover,.gitem[aria-pressed="true"]{border-color:var(--grass)}
+.gitem small{display:block;font-weight:600;color:var(--muted)}
+.gitem .live{flex:none;font-size:12px;background:var(--tiger);color:#fff;border-radius:999px;padding:2px 9px}
+.chipbtn{font:800 14px var(--body);color:var(--ink);background:var(--bg);border:2px solid var(--line);border-radius:10px;padding:6px 12px;cursor:pointer}
+.chipbtn:hover,.chipbtn[aria-pressed="true"]{border-color:var(--grass)}
+.chipbtn[aria-pressed="true"]{background:var(--grass);color:#fff}
+.watch-actions{display:flex;gap:8px;flex-wrap:wrap}
+.watch-code label{font-weight:800;font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
+.watch-code div{display:flex;gap:8px}
+.watch-code input{flex:1;min-width:0;font:800 18px var(--display);text-transform:uppercase;letter-spacing:.2em;text-align:center;border:2px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);padding:5px}
+.watch-note{font-size:13px;color:var(--muted)}
+.watch-hud{display:flex;justify-content:space-between;gap:10px;font:800 20px var(--display)}
+.watch-hud #w-time{color:var(--sun);font-variant-numeric:tabular-nums}
+#w-cv{display:block;width:100%;height:auto;border-radius:12px;background:#1d2a20;touch-action:none;cursor:grab}
+#w-cv.drag{cursor:grabbing}
+.watch-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0}
+.chips .chipbtn{display:flex;align-items:center;gap:6px}
+.chips i{width:11px;height:11px;border-radius:6px;display:inline-block}
+.zoomctl{display:flex;gap:6px;margin-left:auto}
+.watch-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 14px;font-size:14px;font-weight:600;color:var(--muted)}
+.watch-board b{color:var(--ink)}
+@media (max-width:820px){.watch{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -180,7 +209,7 @@ nav .links a.on{background:var(--line);color:var(--ink)}
   <nav>
     <a class="logo" href="#top"><span class="dot"></span>Tag Game</a>
     <div class="links" id="navlinks">
-      <a href="#play">Play</a><a href="#how">How to play</a><a href="#maps">Maps</a><a href="#try">Try it</a><a href="#tips">Tips</a><a href="#controls">Controls</a><a href="#news">News</a>
+      <a href="#play">Play</a><a href="#how">How to play</a><a href="#maps">Maps</a><a href="#try">Try it</a><a href="#watch">Watch</a><a href="#tips">Tips</a><a href="#controls">Controls</a><a href="#news">News</a>
       <button id="theme" class="themebtn" aria-label="Switch light and dark theme">Theme</button>
     </div>
   </nav>
@@ -261,9 +290,9 @@ nav .links a.on{background:var(--line);color:var(--ink)}
         </div>
       </div>
     </div>
-    <template id="svg-arena"><rect x="0" y="0" width="300" height="300" fill="#2f6d30" fill-opacity="1"/><rect x="30" y="30" width="240" height="240" fill="#59a64c" fill-opacity="1"/><circle cx="150" cy="150" r="30" fill="#d9b53a" fill-opacity=".85"/><circle cx="80" cy="60" r="7" fill="#d11fd1"/><circle cx="220" cy="70" r="7" fill="#d11fd1"/><circle cx="70" cy="220" r="7" fill="#d11fd1"/><circle cx="230" cy="230" r="7" fill="#d11fd1"/><circle cx="150" cy="60" r="7" fill="#d11fd1"/><circle cx="150" cy="240" r="7" fill="#d11fd1"/><circle cx="150" cy="150" r="8" fill="#19c3c9"/><text x="150" y="100" text-anchor="middle" class="lb">Tigers start here</text><text x="150" y="196" text-anchor="middle" class="lb">Start circle</text></template>
-    <template id="svg-school"><rect x="0" y="0" width="300" height="300" fill="#4f9a45" fill-opacity="1"/><rect x="142" y="0" width="16" height="300" fill="#d9cfb4" fill-opacity="1"/><rect x="0" y="142" width="300" height="16" fill="#d9cfb4" fill-opacity="1"/><rect x="38" y="14" width="224" height="60" fill="#b3665a" fill-opacity="1"/><rect x="40" y="16" width="220" height="56" fill="#efe3bd" fill-opacity="1"/><rect x="38" y="52.8" width="224" height="1.2000000000000028" fill="#b3665a" fill-opacity="1"/><rect x="226" y="96" width="64" height="108" fill="#b3665a" fill-opacity="1"/><rect x="228" y="98" width="60" height="104" fill="#e2b567" fill-opacity="1"/><rect x="10" y="100" width="64" height="100" fill="#b3665a" fill-opacity="1"/><rect x="12" y="102" width="60" height="96" fill="#efe3bd" fill-opacity="1"/><rect x="10" y="226" width="68" height="68" fill="#b3665a" fill-opacity="1"/><rect x="12" y="228" width="64" height="64" fill="#d9c19a" fill-opacity="1"/><rect x="90" y="234" width="100" height="60" fill="#55565c" fill-opacity="1"/><rect x="198" y="222" width="96" height="72" fill="#3f8f3a" fill-opacity="1"/><circle cx="150" cy="150" r="56" fill="#f1e8c8" fill-opacity=".85"/><circle cx="150" cy="150" r="5" fill="#d9b53a"/><rect x="82" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><rect x="126" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><rect x="170" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><rect x="214" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><text x="150" y="64" text-anchor="middle" class="lb">Hallway</text><text x="150" y="34" text-anchor="middle" class="lb">Classrooms</text><text x="258" y="150" text-anchor="middle" class="lb">Gym</text><text x="42" y="150" text-anchor="middle" class="lb">Cafeteria</text><text x="44" y="260" text-anchor="middle" class="lb">Library</text><text x="140" y="264" text-anchor="middle" class="lb">Parking</text><text x="246" y="258" text-anchor="middle" class="lb">Sports field</text><text x="150" y="170" text-anchor="middle" class="lb">Start circle</text></template>
-    <template id="svg-city"><rect x="0" y="0" width="300" height="300" fill="#3a3a40" fill-opacity="1"/><rect x="7.199999999999999" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="272.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="9.6" y="249.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="32.4" y="272.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="32.4" y="249.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="7.199999999999999" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="212.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="9.6" y="189.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="32.4" y="212.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="32.4" y="189.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="7.199999999999999" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="152.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="9.6" y="129.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="32.4" y="152.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="32.4" y="129.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="7.199999999999999" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="92.39999999999999" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="9.6" y="69.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="32.4" y="92.39999999999999" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="32.4" y="69.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="7.199999999999999" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="9.6" y="9.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="32.4" y="32.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="32.4" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="67.2" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="249.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="67.2" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="212.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="69.6" y="189.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="92.39999999999999" y="212.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="92.39999999999999" y="189.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="67.2" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="152.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="69.6" y="129.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="92.39999999999999" y="152.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="92.39999999999999" y="129.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="67.2" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="92.39999999999999" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="69.6" y="69.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="92.39999999999999" y="92.39999999999999" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="92.39999999999999" y="69.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="67.2" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="32.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="69.6" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="92.39999999999999" y="32.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="92.39999999999999" y="9.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="127.19999999999999" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="272.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="129.6" y="249.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="152.4" y="272.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="152.4" y="249.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="127.19999999999999" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="189.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="128.4" y="128.4" width="43.2" height="43.2" fill="#b9b49c" fill-opacity="1"/><circle cx="150" cy="150" r="5" fill="#d9b53a"/><rect x="127.19999999999999" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="69.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="127.19999999999999" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="129.6" y="9.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="152.4" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="152.4" y="9.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="187.2" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="272.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="189.6" y="249.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="212.4" y="272.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="249.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="187.2" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="212.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="189.6" y="189.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="212.4" y="212.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="189.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="187.2" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="152.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="189.6" y="129.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="152.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="212.4" y="129.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="187.2" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="92.39999999999999" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="189.6" y="69.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="92.39999999999999" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="212.4" y="69.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="187.2" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="189.6" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="212.4" y="32.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="212.4" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="247.2" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="272.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="249.6" y="249.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="272.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="249.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="247.2" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="189.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="247.2" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="152.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="249.6" y="129.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="272.4" y="152.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="129.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="247.2" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="92.39999999999999" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="249.6" y="69.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="272.4" y="92.39999999999999" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="69.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="247.2" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="32.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="249.6" y="9.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="272.4" y="32.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="272.4" y="9.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="59.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="59.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><rect x="119.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="119.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><rect x="179.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="179.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><rect x="239.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="239.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><text x="150" y="128" text-anchor="middle" class="lb">Plaza</text><text x="150" y="176" text-anchor="middle" class="lb">Start circle</text><text x="150" y="12" text-anchor="middle" class="lb">Outer wall</text></template>
+    <script type="text/plain" id="svg-arena"><rect x="0" y="0" width="300" height="300" fill="#2f6d30" fill-opacity="1"/><rect x="30" y="30" width="240" height="240" fill="#59a64c" fill-opacity="1"/><circle cx="150" cy="150" r="30" fill="#d9b53a" fill-opacity=".85"/><circle cx="80" cy="60" r="7" fill="#d11fd1"/><circle cx="220" cy="70" r="7" fill="#d11fd1"/><circle cx="70" cy="220" r="7" fill="#d11fd1"/><circle cx="230" cy="230" r="7" fill="#d11fd1"/><circle cx="150" cy="60" r="7" fill="#d11fd1"/><circle cx="150" cy="240" r="7" fill="#d11fd1"/><circle cx="150" cy="150" r="8" fill="#19c3c9"/><text x="150" y="100" text-anchor="middle" class="lb">Tigers start here</text><text x="150" y="196" text-anchor="middle" class="lb">Start circle</text></script>
+    <script type="text/plain" id="svg-school"><rect x="0" y="0" width="300" height="300" fill="#4f9a45" fill-opacity="1"/><rect x="142" y="0" width="16" height="300" fill="#d9cfb4" fill-opacity="1"/><rect x="0" y="142" width="300" height="16" fill="#d9cfb4" fill-opacity="1"/><rect x="38" y="14" width="224" height="60" fill="#b3665a" fill-opacity="1"/><rect x="40" y="16" width="220" height="56" fill="#efe3bd" fill-opacity="1"/><rect x="38" y="52.8" width="224" height="1.2000000000000028" fill="#b3665a" fill-opacity="1"/><rect x="226" y="96" width="64" height="108" fill="#b3665a" fill-opacity="1"/><rect x="228" y="98" width="60" height="104" fill="#e2b567" fill-opacity="1"/><rect x="10" y="100" width="64" height="100" fill="#b3665a" fill-opacity="1"/><rect x="12" y="102" width="60" height="96" fill="#efe3bd" fill-opacity="1"/><rect x="10" y="226" width="68" height="68" fill="#b3665a" fill-opacity="1"/><rect x="12" y="228" width="64" height="64" fill="#d9c19a" fill-opacity="1"/><rect x="90" y="234" width="100" height="60" fill="#55565c" fill-opacity="1"/><rect x="198" y="222" width="96" height="72" fill="#3f8f3a" fill-opacity="1"/><circle cx="150" cy="150" r="56" fill="#f1e8c8" fill-opacity=".85"/><circle cx="150" cy="150" r="5" fill="#d9b53a"/><rect x="82" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><rect x="126" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><rect x="170" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><rect x="214" y="14" width="1.2000000000000028" height="40" fill="#b3665a" fill-opacity="1"/><text x="150" y="64" text-anchor="middle" class="lb">Hallway</text><text x="150" y="34" text-anchor="middle" class="lb">Classrooms</text><text x="258" y="150" text-anchor="middle" class="lb">Gym</text><text x="42" y="150" text-anchor="middle" class="lb">Cafeteria</text><text x="44" y="260" text-anchor="middle" class="lb">Library</text><text x="140" y="264" text-anchor="middle" class="lb">Parking</text><text x="246" y="258" text-anchor="middle" class="lb">Sports field</text><text x="150" y="170" text-anchor="middle" class="lb">Start circle</text></script>
+    <script type="text/plain" id="svg-city"><rect x="0" y="0" width="300" height="300" fill="#3a3a40" fill-opacity="1"/><rect x="7.199999999999999" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="272.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="9.6" y="249.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="32.4" y="272.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="32.4" y="249.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="7.199999999999999" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="212.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="9.6" y="189.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="32.4" y="212.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="32.4" y="189.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="7.199999999999999" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="152.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="9.6" y="129.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="32.4" y="152.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="32.4" y="129.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="7.199999999999999" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="92.39999999999999" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="9.6" y="69.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="32.4" y="92.39999999999999" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="32.4" y="69.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="7.199999999999999" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="9.6" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="9.6" y="9.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="32.4" y="32.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="32.4" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="67.2" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="249.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="67.2" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="212.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="69.6" y="189.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="92.39999999999999" y="212.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="92.39999999999999" y="189.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="67.2" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="152.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="69.6" y="129.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="92.39999999999999" y="152.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="92.39999999999999" y="129.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="67.2" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="92.39999999999999" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="69.6" y="69.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="92.39999999999999" y="92.39999999999999" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="92.39999999999999" y="69.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="67.2" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="69.6" y="32.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="69.6" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="92.39999999999999" y="32.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="92.39999999999999" y="9.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="127.19999999999999" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="272.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="129.6" y="249.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="152.4" y="272.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="152.4" y="249.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="127.19999999999999" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="189.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="128.4" y="128.4" width="43.2" height="43.2" fill="#b9b49c" fill-opacity="1"/><circle cx="150" cy="150" r="5" fill="#d9b53a"/><rect x="127.19999999999999" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="69.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="127.19999999999999" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="129.6" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="129.6" y="9.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="152.4" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="152.4" y="9.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="187.2" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="272.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="189.6" y="249.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="212.4" y="272.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="249.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="187.2" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="212.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="189.6" y="189.6" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="212.4" y="212.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="189.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="187.2" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="152.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="189.6" y="129.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="152.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="212.4" y="129.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="187.2" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="92.39999999999999" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="189.6" y="69.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="212.4" y="92.39999999999999" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="212.4" y="69.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="187.2" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="189.6" y="32.4" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="189.6" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="212.4" y="32.4" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="212.4" y="9.6" width="18.0" height="18.0" fill="#aeaeb4" fill-opacity="1"/><rect x="247.2" y="247.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="272.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="249.6" y="249.6" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="272.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="249.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="247.2" y="187.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="189.6" width="40.8" height="40.8" fill="#4f9a45" fill-opacity="1"/><rect x="247.2" y="127.19999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="152.4" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="249.6" y="129.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="272.4" y="152.4" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="129.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="247.2" y="67.2" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="92.39999999999999" width="18.0" height="18.0" fill="#8fa0b8" fill-opacity="1"/><rect x="249.6" y="69.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="272.4" y="92.39999999999999" width="18.0" height="18.0" fill="#d8cfa8" fill-opacity="1"/><rect x="272.4" y="69.6" width="18.0" height="18.0" fill="#86ab98" fill-opacity="1"/><rect x="247.2" y="7.199999999999999" width="45.6" height="45.6" fill="#9a9aa3" fill-opacity="1"/><rect x="249.6" y="32.4" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="249.6" y="9.6" width="18.0" height="18.0" fill="#c08a78" fill-opacity="1"/><rect x="272.4" y="32.4" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="272.4" y="9.6" width="18.0" height="18.0" fill="#c595a6" fill-opacity="1"/><rect x="59.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="59.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><rect x="119.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="119.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><rect x="179.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="179.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><rect x="239.8" y="0" width="0.4" height="300" fill="#e8cf3a" fill-opacity="0.5"/><rect x="0" y="239.8" width="300" height="0.4" fill="#e8cf3a" fill-opacity="0.5"/><text x="150" y="128" text-anchor="middle" class="lb">Plaza</text><text x="150" y="176" text-anchor="middle" class="lb">Start circle</text><text x="150" y="12" text-anchor="middle" class="lb">Outer wall</text></script>
   </section>
 
   <section id="try">
@@ -279,6 +308,34 @@ nav .links a.on{background:var(--line);color:var(--ink)}
       <div class="overlay" id="ov"><div><b id="ov-title">Ready?</b><p id="ov-text">Stay out of IT's way for 30 seconds. You score a point for every second you are not IT.</p><button class="btn" id="go">Start</button></div></div>
     </div>
   </section>
+
+    <section id="watch">
+    <div class="sec-head"><h2>Watch live</h2>
+      <p>See anyone's game from above and follow them around the map. Public games and Practice rounds show up here while the player has <b>Allow spectators</b> switched on (it is on by default). Players can turn it off on the title screen for Practice, or in the Multiplayer menu.</p></div>
+    <div class="watch" id="watchbox">
+      <div class="watch-side">
+        <div class="watch-status" id="w-status" role="status">Connecting...</div>
+        <div class="watch-list" id="w-list"></div>
+        <div class="watch-actions">
+          <button type="button" class="chipbtn" id="w-refresh">Refresh</button>
+          <button type="button" class="chipbtn" id="w-demo">Watch a demo</button>
+        </div>
+        <form class="watch-code" id="w-codeform"><label for="w-code">Private room code</label><div><input id="w-code" maxlength="4" autocomplete="off" placeholder="KATE"><button class="chipbtn" type="submit">Watch</button></div></form>
+        <p class="watch-note">Private rooms are never listed. You need the host's code to watch one, and players in it can still hide themselves.</p>
+      </div>
+      <div class="watch-main">
+        <div class="watch-hud" id="w-hud"><span id="w-title">Pick a game</span><span id="w-time"></span></div>
+        <canvas id="w-cv" width="720" height="560" aria-label="Live top-down view of the game"></canvas>
+        <div class="watch-tools">
+          <button type="button" class="chipbtn" id="w-over" aria-pressed="true">Whole map</button>
+          <div class="chips" id="w-chips"></div>
+          <span class="zoomctl"><button type="button" class="chipbtn" id="w-zout" aria-label="Zoom out">&minus;</button><button type="button" class="chipbtn" id="w-zin" aria-label="Zoom in">+</button></span>
+        </div>
+        <div class="watch-board" id="w-board"></div>
+      </div>
+    </div>
+  </section>
+
 
   <section id="tips">
     <div class="sec-head"><h2>Tips from the tigers</h2></div>
@@ -415,7 +472,7 @@ nav .links a.on{background:var(--line);color:var(--ink)}
   var tabs=[].slice.call(document.querySelectorAll('.tabs button')),rows=[].slice.call(document.querySelectorAll('.scale-row'));
   function show(id){
     var m=MAPS[id];
-    document.getElementById('map-svg').innerHTML=document.getElementById('svg-'+id).innerHTML;
+    document.getElementById('map-svg').innerHTML=document.getElementById('svg-'+id).textContent;
     document.getElementById('map-name').textContent=m.name;
     document.getElementById('map-blurb').textContent=m.blurb;
     document.getElementById('st-size').textContent=m.size;
@@ -600,6 +657,167 @@ nav .links a.on{background:var(--line);color:var(--ink)}
   cv.addEventListener('pointerup',function(){ptr=null});
   cv.addEventListener('pointercancel',function(){ptr=null});
   reset();requestAnimationFrame(function(ts){prev=ts/1000;loop(ts)});
+})();
+
+(function(){
+  var LIVE=true,SERVER="wss://tag-game-server-zsyy.onrender.com";
+  var PAL=['#33d9e6','#f25959','#66d959','#fad133','#bf73f2','#fa8c33','#f280cc','#f2f2f2'];
+  var K={0:8,1:2,2:1.2};              // image units per metre on each map plan (plans are 300 x 300)
+  var NAMES=['Arena','School','City'];
+  var cv=document.getElementById('w-cv'),cx=cv.getContext('2d');
+  var $=function(id){return document.getElementById(id)};
+  var status=$('w-status'),listEl=$('w-list'),chips=$('w-chips'),board=$('w-board');
+  var ws=null,connected=false,view=null,demo=null,imgs={},zoom=1,follow=-1,cam={x:0,z:0},pan=null,watchKey=null;
+
+  // ---- map pictures (reuse the plans from the Maps section)
+  function mapImg(id){
+    if(imgs[id])return imgs[id];
+    var names=['arena','school','city'],t=document.getElementById('svg-'+names[id]);
+    var svg='<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1500" viewBox="0 0 300 300"><style>.lb{font:800 10px sans-serif;fill:#fff;stroke:rgba(0,0,0,.65);stroke-width:3px;paint-order:stroke;text-anchor:middle}</style>'+t.textContent+'</svg>';
+    var im=new Image();im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);imgs[id]=im;return im;
+  }
+  function sz(){return cv.width}
+
+  // ---- connection
+  function setStatus(s,ok){status.textContent=s;status.classList.toggle('ok',!!ok)}
+  function connect(){
+    if(!LIVE){setStatus('This preview cannot reach the game server. Use the demo to see how it looks.');renderList([]);return}
+    try{ws=new WebSocket(SERVER)}catch(e){setStatus('Could not connect.');return}
+    setStatus('Connecting to the game server (it can take up to a minute to wake up)...');
+    ws.onopen=function(){connected=true;setStatus('Connected. Pick a game to watch.',true);ask()};
+    ws.onmessage=function(e){var m;try{m=JSON.parse(e.data)}catch(x){return}handle(m)};
+    ws.onclose=function(){connected=false;if(!demo){setStatus('Disconnected. Press Refresh to reconnect.')}};
+    ws.onerror=function(){};
+  }
+  function ask(){if(connected)ws.send(JSON.stringify({t:'list'}))}
+  function handle(m){
+    if(m.t==='list')renderList(m.items);
+    else if(m.t==='view'&&!demo){view=m;draw()}
+    else if(m.t==='viewend'&&!demo){setStatus('That game ended.');view=null;watchKey=null;ask();updateUI()}
+    else if(m.t==='err')setStatus(m.msg);
+  }
+  function renderList(items){
+    listEl.innerHTML='';
+    if(!items.length){
+      var p=document.createElement('p');p.className='watch-note';
+      p.textContent=connected?'No one is playing right now, or everyone has spectators switched off. Press Refresh in a minute, or watch the demo.':'No live games to show.';listEl.appendChild(p);return;
+    }
+    items.forEach(function(it){
+      var b=document.createElement('button');b.type='button';b.className='gitem';b.setAttribute('aria-pressed',it.key===watchKey);
+      var d=document.createElement('div');var t=document.createElement('span');t.textContent=it.label;var s=document.createElement('small');
+      s.textContent=NAMES[it.map]+' - '+it.players+(it.players===1?' player':' players')+(it.phase==='lobby'?' - lobby':'');
+      d.appendChild(t);d.appendChild(s);var l=document.createElement('span');l.className='live';l.textContent='LIVE';b.appendChild(d);b.appendChild(l);
+      b.addEventListener('click',function(){watch(it.key)});listEl.appendChild(b);
+    });
+  }
+  function watch(key){
+    stopDemo();watchKey=key;follow=-1;zoom=1;view=null;
+    ws.send(JSON.stringify({t:'watch',key:key}));setStatus('Watching.',true);
+  }
+  $('w-refresh').addEventListener('click',function(){
+    if(connected)ask();else if(!ws||ws.readyState>1)connect();
+  });
+  $('w-codeform').addEventListener('submit',function(e){
+    e.preventDefault();var c=$('w-code').value.trim().toUpperCase();if(c.length!==4)return;
+    if(!connected){setStatus('Not connected yet.');return}
+    stopDemo();watchKey='room:'+c;follow=-1;zoom=1;view=null;ws.send(JSON.stringify({t:'watch',code:c}));
+  });
+
+  // ---- demo (made-up players, so the viewer can be tried anytime)
+  function startDemo(){
+    if(connected&&watchKey)ws.send(JSON.stringify({t:'unwatch'}));
+    watchKey=null;var map=1,lim=[14,70,118][map];
+    demo={map:map,lim:lim,left:90,it:0,freeze:1,last:-1,noback:0,ents:[],t0:performance.now()};
+    for(var i=0;i<6;i++)demo.ents.push({id:i,n:['Ava','Ben','Cy','Di','Eli','Fay'][i],x:(Math.random()-.5)*60,z:(Math.random()-.5)*60,ry:0,score:0,c:i,tx:0,tz:0,wt:0});
+    follow=-1;zoom=1;view=null;setStatus('Demo: made-up players.');demoTick(performance.now());
+  }
+  function stopDemo(){demo=null}
+  function demoTick(ts){
+    if(!demo)return;
+    var d=demo,dt=Math.min(.05,(ts-d.t0)/1000);d.t0=ts;d.left-=dt;d.freeze-=dt;d.noback-=dt;
+    if(d.left<=0)d.left=90;
+    var it=d.ents[d.it];
+    d.ents.forEach(function(e,i){
+      var dx,dz,sp;
+      if(i===d.it){
+        if(d.freeze>0)return;
+        var b=null,bd=1e9;d.ents.forEach(function(o,j){if(j===i||(j===d.last&&d.noback>0))return;var q=Math.hypot(o.x-e.x,o.z-e.z);if(q<bd){bd=q;b=o}});
+        dx=b.x-e.x;dz=b.z-e.z;sp=8.5;
+        if(bd<2&&d.freeze<=0){d.last=i;d.it=b.id;d.freeze=1.5;d.noback=3.5}
+      }else{
+        var ax=e.x-it.x,az=e.z-it.z,l=Math.hypot(ax,az)||1;
+        if(l<26){dx=ax/l;dz=az/l;sp=7}else{e.wt-=dt;if(e.wt<=0){e.tx=(Math.random()-.5)*d.lim*1.4;e.tz=(Math.random()-.5)*d.lim*1.4;e.wt=3}dx=e.tx-e.x;dz=e.tz-e.z;sp=3}
+        e.score+=dt;
+      }
+      var l2=Math.hypot(dx,dz)||1;e.x=Math.max(-d.lim,Math.min(d.lim,e.x+dx/l2*sp*dt));e.z=Math.max(-d.lim,Math.min(d.lim,e.z+dz/l2*sp*dt));e.ry=Math.atan2(dx,dz);
+    });
+    view={t:'view',label:'Demo game',map:d.map,it:d.it,left:d.left,hidden:0,players:d.ents.map(function(e){return{id:e.id,n:e.n,x:e.x,z:e.z,ry:e.ry,score:Math.floor(e.score),c:e.c}}),kind:'demo'};
+    draw();requestAnimationFrame(demoTick);
+  }
+  $('w-demo').addEventListener('click',startDemo);
+
+  // ---- drawing
+  function p2i(v,k){return v*k}
+  function draw(){
+    updateUI();
+    var W=cv.width,H=cv.height;cx.clearRect(0,0,W,H);cx.fillStyle='#1d2a20';cx.fillRect(0,0,W,H);
+    if(!view){cx.fillStyle='#9db0a2';cx.font='800 22px sans-serif';cx.textAlign='center';cx.fillText('Pick a game on the left',W/2,H/2);return}
+    var k=K[view.map]||2,base=Math.min(W,H)/300,s=base*zoom;
+    var f=follow>=0?view.players.filter(function(p){return p.id===follow})[0]:null;
+    if(f){cam.x=f.x*k;cam.z=-f.z*k}else if(follow<0&&!pan){if(zoom<=1.001){cam.x=0;cam.z=0}}
+    cx.save();cx.translate(W/2,H/2);cx.scale(s,s);cx.translate(-(150+cam.x),-(150+cam.z));
+    var im=mapImg(view.map);if(im.complete)cx.drawImage(im,0,0,300,300);
+    cx.restore();
+    function toS(x,z){return[(150+x*k-(150+cam.x))*s+W/2,(150-z*k-(150+cam.z))*s+H/2]}
+    view.players.forEach(function(p){
+      var a=toS(p.x,p.z),r=Math.max(6,Math.min(22,1.1*k*s*1.3));
+      var col=view.kind==='practice'||view.kind==='demo'&&false?(p.c===0?PAL[0]:'#d11fd1'):PAL[Math.abs(p.c)%8];
+      if(view.kind==='practice'&&p.c!==0)col='#d11fd1';
+      var it=p.id===view.it;
+      cx.beginPath();cx.arc(a[0],a[1],r+(it?4:0),0,7);cx.fillStyle=it?'#e0383a':'rgba(0,0,0,.35)';cx.fill();
+      cx.beginPath();cx.arc(a[0],a[1],r,0,7);cx.fillStyle=col;cx.fill();
+      cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(a[0]+Math.sin(p.ry)*r*1.5,a[1]-Math.cos(p.ry)*r*1.5);cx.strokeStyle='rgba(0,0,0,.55)';cx.lineWidth=2;cx.stroke();
+      cx.font='800 13px sans-serif';cx.textAlign='center';cx.lineWidth=3;cx.strokeStyle='rgba(0,0,0,.7)';cx.fillStyle='#fff';
+      cx.strokeText(p.n+(it?' (IT)':''),a[0],a[1]-r-7);cx.fillText(p.n+(it?' (IT)':''),a[0],a[1]-r-7);
+    });
+  }
+  var lastUI='';
+  function updateUI(){
+    if(!view){$('w-title').textContent='Pick a game';$('w-time').textContent='';chips.innerHTML='';board.innerHTML='';lastUI='';return}
+    $('w-title').textContent=view.label+' - '+NAMES[view.map];
+    var s=Math.ceil(view.left||0);$('w-time').textContent=view.phase==='lobby'?'Lobby':(Math.floor(s/60)+':'+('0'+(s%60)).slice(-2));
+    var sig=view.players.map(function(p){return p.id+p.n+(p.id===view.it?'!':'')+Math.floor(p.score)}).join('|')+'|'+follow+'|'+view.hidden;
+    if(sig===lastUI)return;lastUI=sig;
+    chips.innerHTML='';
+    view.players.forEach(function(p){
+      var b=document.createElement('button');b.type='button';b.className='chipbtn';b.setAttribute('aria-pressed',p.id===follow);
+      var i=document.createElement('i');i.style.background=(view.kind==='practice'&&p.c!==0)?'#d11fd1':PAL[Math.abs(p.c)%8];
+      b.appendChild(i);b.appendChild(document.createTextNode(p.n));
+      b.addEventListener('click',function(){follow=p.id;zoom=Math.max(zoom,2.2);pan=null;lastUI='';draw()});chips.appendChild(b);
+    });
+    $('w-over').setAttribute('aria-pressed',follow<0);
+    var sorted=view.players.slice().sort(function(a,b){return b.score-a.score});
+    board.innerHTML='';
+    sorted.forEach(function(p){var d=document.createElement('div');var b=document.createElement('b');b.textContent=p.n;d.appendChild(b);d.appendChild(document.createTextNode('  '+Math.floor(p.score)+' s'+(p.id===view.it?'  IT':'')));board.appendChild(d)});
+    if(view.hidden){var d=document.createElement('div');d.textContent=view.hidden+' player'+(view.hidden>1?'s':'')+' hidden (spectators off)';board.appendChild(d)}
+  }
+  $('w-over').addEventListener('click',function(){follow=-1;zoom=1;cam.x=0;cam.z=0;lastUI='';draw()});
+  function setZoom(z){zoom=Math.max(1,Math.min(8,z));draw()}
+  $('w-zin').addEventListener('click',function(){setZoom(zoom*1.4)});
+  $('w-zout').addEventListener('click',function(){setZoom(zoom/1.4)});
+  cv.addEventListener('wheel',function(e){e.preventDefault();setZoom(zoom*(e.deltaY<0?1.15:1/1.15))},{passive:false});
+  cv.addEventListener('pointerdown',function(e){pan={x:e.clientX,y:e.clientY};cv.classList.add('drag');cv.setPointerCapture(e.pointerId)});
+  cv.addEventListener('pointermove',function(e){
+    if(!pan||!view)return;var r=cv.getBoundingClientRect(),sc=cv.width/r.width,s=Math.min(cv.width,cv.height)/300*zoom;
+    follow=-1;cam.x-=(e.clientX-pan.x)*sc/s;cam.z-=(e.clientY-pan.y)*sc/s;pan={x:e.clientX,y:e.clientY};lastUI='';draw();
+  });
+  function endPan(){pan=null;cv.classList.remove('drag')}
+  cv.addEventListener('pointerup',endPan);cv.addEventListener('pointercancel',endPan);
+  var img0=mapImg(1);img0.onload=function(){if(view)draw()};
+  [0,2].forEach(function(i){mapImg(i)});
+  draw();connect();
+  setInterval(function(){if(connected&&!watchKey&&!demo)ask()},6000);
+  setInterval(function(){if(view&&view.kind!=='demo'&&view.left>0)view.left=Math.max(0,view.left-.25),updateUI()},250);
 })();
 </script>
 </body>
