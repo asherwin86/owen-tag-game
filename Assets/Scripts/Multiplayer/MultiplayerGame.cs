@@ -9,6 +9,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TagGame.Gameplay;
 using TagGame.UI;
+using TagGame.Maps;
 
 namespace TagGame.Multiplayer
 {
@@ -26,20 +27,20 @@ namespace TagGame.Multiplayer
         private const string PrefServerMode = "TagGame.MpServerMode"; // 0 official, 1 my own
         private const string PrefCustomUrl = "TagGame.MpCustomUrl";
 
-        [Serializable] private class PInfo { public int id; public string name; public int score, wins, color; public float x, z, ry; }
+        [Serializable] private class PInfo { public int id; public string name; public int score, wins, color, vote; public float x, z, ry; }
         [Serializable] private class Spawn { public int id; public float x, z; }
         [Serializable]
         private class Msg
         {
             public string t, code, phase, msg, byName, targetName;
-            public int id, hostId, by, target;
+            public int id, hostId, by, target, it, map;
             public bool isPublic;
             public float duration, left, next, stunMs;
             public PInfo[] players, scores;
             public Spawn[] spawns;
             public string[] winners;
         }
-        [Serializable] private class Out { public string t; public string name; public string code; }
+        [Serializable] private class Out { public string t; public string name; public string code; public int map; }
 
         private static readonly Color[] Palette =
         {
@@ -68,6 +69,11 @@ namespace TagGame.Multiplayer
         private float _roundLeft, _nextRoundIn;
         private float _stunUntil, _nextTag, _nextSend, _feedUntil, _connectStarted;
         private Out _pending;
+        private int _itId, _myVote = -1;
+        private readonly Dictionary<int, GameObject> _markers = new Dictionary<int, GameObject>();
+        private Image[] _voteBg = new Image[MapManager.Count];
+        private TMP_Text[] _voteText = new TMP_Text[MapManager.Count];
+        private TMP_Text _roleText;
 
         // UI
         private GameObject _canvasGo, _menuPanel, _roomPanel, _hud, _resultsPanel, _tagButton, _startRoundButton, _customUrlRow;
@@ -217,6 +223,8 @@ namespace TagGame.Multiplayer
             _pending = null;
             _mode = Mode.Idle;
             ClearRemotes();
+            _itId = 0;
+            if (MapManager.I != null) MapManager.I.LoadSelected();
             _player.Frozen = false;
             var prend = _player.GetComponent<Renderer>();
             if (prend != null && _playerMaterial != null) prend.sharedMaterial = _playerMaterial;
@@ -297,7 +305,7 @@ namespace TagGame.Multiplayer
 
         private void PressTag()
         {
-            if (_mode != Mode.Playing || Time.time < _stunUntil || Time.time < _nextTag) return;
+            if (_mode != Mode.Playing || _itId != _myId || Time.time < _stunUntil || Time.time < _nextTag) return;
             _nextTag = Time.time + 0.3f;
             GameSocket.Send("{\"t\":\"tag\"}");
         }
@@ -340,6 +348,7 @@ namespace TagGame.Multiplayer
                     _phase = m.phase;
                     _roomIsPublic = m.isPublic;
                     _roster = m.players ?? new PInfo[0];
+                    foreach (var rp0 in _roster) if (rp0.id == _myId) _myVote = rp0.vote;
                     if (_mode == Mode.Room || _mode == Mode.Playing) RefreshRoomPanel();
                     break;
                 case "start":
@@ -350,14 +359,24 @@ namespace TagGame.Multiplayer
                     break;
                 case "tagged":
                     _scores = m.scores ?? _scores;
-                    if (m.by == _myId) Feed("You tagged " + m.targetName + "!  +1", 2f);
+                    _itId = m.it;
+                    if (m.by == _myId)
+                    {
+                        Feed("You tagged " + m.targetName + "!", 2f);
+                        TagPopup.Show("You tagged " + m.targetName + "!", new Color(0.2f, 0.8f, 0.35f));
+                    }
                     else if (m.target == _myId)
                     {
                         _stunUntil = Time.time + m.stunMs / 1000f;
                         _player.Frozen = true;
-                        Feed(m.byName + " tagged you!", 2f);
+                        Feed(m.byName + " tagged you! You're IT!", 2f);
+                        TagPopup.Show(m.byName + " tagged you!  You're IT!", new Color(0.95f, 0.25f, 0.25f));
                     }
-                    else Feed(m.byName + " tagged " + m.targetName, 2f);
+                    else
+                    {
+                        Feed(m.byName + " tagged " + m.targetName, 2f);
+                        TagPopup.Show(m.byName + " tagged " + m.targetName + "!", new Color(0.95f, 0.65f, 0.15f));
+                    }
                     break;
                 case "miss":
                     Feed("Missed - face someone and get close!", 1f);
@@ -378,6 +397,9 @@ namespace TagGame.Multiplayer
             _roundLeft = m.left > 0f ? m.left : m.duration;
             _scores = new PInfo[0];
             _stunUntil = 0f;
+            _itId = m.it;
+            _myVote = -1;
+            if (MapManager.I != null) MapManager.I.Load(m.map);
             _player.Frozen = false;
             _player.ExitLobby();
             _roomPanel.SetActive(false);
@@ -394,7 +416,7 @@ namespace TagGame.Multiplayer
                     _player.TeleportTo(pos, look);
                 }
             }
-            Feed("GO! Press TAG (E / Space) while facing someone", 3f);
+            Feed(_itId == _myId ? "You are IT! Chase someone and press TAG (E / Space)" : "Run! Only the IT player can tag. Stay untagged to score.", 4f);
         }
 
         private void EndRound(Msg m)
@@ -402,6 +424,8 @@ namespace TagGame.Multiplayer
             _mode = Mode.Room;
             _phase = "lobby";
             ClearRemotes();
+            _itId = 0;
+            if (MapManager.I != null) MapManager.I.LoadSelected();
             _player.Frozen = false;
             _player.EnterLobby();
             _hud.SetActive(false);
@@ -411,7 +435,7 @@ namespace TagGame.Multiplayer
             var sb = new StringBuilder();
             int rank = 1;
             if (m.scores != null)
-                foreach (var s in m.scores) sb.AppendLine((rank++) + ".  " + s.name + "   " + s.score);
+                foreach (var s in m.scores) sb.AppendLine((rank++) + ".  " + s.name + "   " + s.score + "s");
             _resultsList.text = sb.ToString();
             string w = m.winners != null && m.winners.Length > 0 ? string.Join(" & ", m.winners) : "nobody";
             _resultsTitle.text = (m.winners != null && m.winners.Length > 1 ? "Tie: " : "Winner: ") + w;
@@ -422,6 +446,7 @@ namespace TagGame.Multiplayer
         {
             if (m.left > 0f || _mode == Mode.Playing) _roundLeft = m.left;
             _nextRoundIn = m.next;
+            if (m.it > 0) _itId = m.it;
             if (_mode != Mode.Playing || m.players == null) return;
 
             var seen = new HashSet<int>();
@@ -462,6 +487,8 @@ namespace TagGame.Multiplayer
         {
             foreach (var r in _remotes.Values) if (r.t != null) Destroy(r.t.gameObject);
             _remotes.Clear();
+            foreach (var mk in _markers.Values) if (mk != null) Destroy(mk);
+            _markers.Clear();
         }
 
         // ------------------------------------------------------------------ HUD / panels
@@ -494,6 +521,18 @@ namespace TagGame.Multiplayer
             }
             _startRoundButton.SetActive(iAmHost);
             _waitText.gameObject.SetActive(!iAmHost);
+            RefreshVotes();
+        }
+
+        private void RefreshVotes()
+        {
+            var counts = new int[MapManager.Count];
+            foreach (var p in _roster) if (p.vote >= 0 && p.vote < counts.Length) counts[p.vote]++;
+            for (int i = 0; i < MapManager.Count; i++)
+            {
+                _voteText[i].text = MapManager.Names[i] + "\n<size=80%>" + counts[i] + (counts[i] == 1 ? " vote" : " votes") + "</size>";
+                _voteBg[i].color = i == _myVote ? new Color(0.15f, 0.6f, 0.3f, 0.98f) : new Color(0.2f, 0.2f, 0.28f, 0.95f);
+            }
         }
 
         private void UpdateHud()
@@ -521,8 +560,41 @@ namespace TagGame.Multiplayer
                 sb.AppendLine("<color=#" + ColorUtility.ToHtmlStringRGB(ColorOf(p.color)) + ">" + p.name + "</color>  " + p.score);
             _scoreText.text = sb.ToString();
 
+            bool iAmIt = _itId == _myId;
+            string itName = "";
+            foreach (var p in _roster) if (p.id == _itId) itName = p.name;
+            _roleText.text = iAmIt ? "<color=#FF5050>YOU ARE IT!</color>  tag someone" : (itName.Length > 0 ? "<color=#FF5050>" + itName + "</color> is IT - run!" : "");
+            _tagButton.SetActive(iAmIt);
+            UpdateMarkers();
             if (_feedText.text.Length > 0 && Time.unscaledTime > _feedUntil) _feedText.text = "";
             if (Time.time < _stunUntil && _feedText.text.Length == 0) Feed("You're frozen!", 0.5f);
+        }
+
+        private void UpdateMarkers()
+        {
+            SetMarker(_myId, _player.transform, _itId == _myId);
+            foreach (var kv in _remotes) SetMarker(kv.Key, kv.Value.t, kv.Key == _itId);
+            foreach (var kv in _markers) if (kv.Key != _myId && !_remotes.ContainsKey(kv.Key) && kv.Value != null) kv.Value.SetActive(false);
+        }
+
+        private void SetMarker(int id, Transform parent, bool on)
+        {
+            _markers.TryGetValue(id, out var mk);
+            if (mk == null)
+            {
+                if (!on || parent == null) return;
+                mk = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                var c = mk.GetComponent<Collider>(); if (c != null) Destroy(c);
+                mk.name = "ItMarker";
+                var r = mk.GetComponent<Renderer>();
+                r.sharedMaterial = _playerMaterial != null ? new Material(_playerMaterial) { color = new Color(1f, 0.15f, 0.15f) } : r.sharedMaterial;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mk.transform.localScale = Vector3.one * 0.55f;
+                _markers[id] = mk;
+            }
+            if (parent == null) { mk.SetActive(false); return; }
+            mk.SetActive(on);
+            mk.transform.position = parent.position + Vector3.up * 2.2f + Vector3.up * Mathf.Sin(Time.time * 5f) * 0.12f;
         }
 
         // ------------------------------------------------------------------ UI building
@@ -567,7 +639,7 @@ namespace TagGame.Multiplayer
             _roomPanel = MakePanel(root, "RoomPanel", new Color(0f, 0f, 0f, 0.65f));
             var rrt = (RectTransform)_roomPanel.transform;
             rrt.anchorMin = rrt.anchorMax = rrt.pivot = new Vector2(1f, 0.5f);
-            rrt.sizeDelta = new Vector2(420f, 700f);
+            rrt.sizeDelta = new Vector2(420f, 830f);
             rrt.anchoredPosition = new Vector2(-30f, 0f);
             var rp = _roomPanel.transform;
             MakeText(rp, "GAME CODE", 28, T, new Vector2(0, -40), new Vector2(380, 40));
@@ -599,10 +671,20 @@ namespace TagGame.Multiplayer
                 _rowObjs[i] = rowGo;
                 rowGo.SetActive(false);
             }
-            _startRoundButton = MakeButton(rp, "START GAME", T, new Vector2(0, -590), new Vector2(340, 56), new Color(0.15f, 0.6f, 0.3f),
+            MakeText(rp, "VOTE FOR THE NEXT MAP", 22, T, new Vector2(0, -540), new Vector2(400, 30));
+            for (int i = 0; i < MapManager.Count; i++)
+            {
+                int mid = i;
+                var vb = MakeButton(rp, "", T, new Vector2((i - 1) * 132f, -600f), new Vector2(124, 82), new Color(0.2f, 0.2f, 0.28f, 0.95f),
+                    () => { _myVote = mid; GameSocket.Send(Json(new Out { t = "vote", map = mid })); RefreshVotes(); }, 20);
+                _voteBg[i] = vb.GetComponent<Image>();
+                _voteText[i] = vb.GetComponentInChildren<TMP_Text>();
+                _voteText[i].text = MapManager.Names[i];
+            }
+            _startRoundButton = MakeButton(rp, "START GAME", T, new Vector2(0, -700), new Vector2(340, 56), new Color(0.15f, 0.6f, 0.3f),
                 () => GameSocket.Send("{\"t\":\"start\"}"), 32).gameObject;
-            _waitText = MakeText(rp, "", 26, T, new Vector2(0, -590), new Vector2(380, 56));
-            MakeButton(rp, "Leave", T, new Vector2(0, -650), new Vector2(340, 42), new Color(0.6f, 0.2f, 0.2f), LeaveRoom, 26);
+            _waitText = MakeText(rp, "", 26, T, new Vector2(0, -700), new Vector2(380, 56));
+            MakeButton(rp, "Leave", T, new Vector2(0, -765), new Vector2(340, 42), new Color(0.6f, 0.2f, 0.2f), LeaveRoom, 26);
             _roomPanel.SetActive(false);
 
             // --- HUD
@@ -612,6 +694,7 @@ namespace TagGame.Multiplayer
             var hp = _hud.transform;
             _timerText = MakeText(hp, "1:00", 56, T, new Vector2(0, -45), new Vector2(300, 80));
             _feedText = MakeText(hp, "", 34, T, new Vector2(0, -120), new Vector2(1000, 60));
+            _roleText = MakeText(hp, "", 36, T, new Vector2(0, -180), new Vector2(1100, 56));
             _scoreText = MakeText(hp, "", 26, TL, new Vector2(20, -135), new Vector2(360, 320));
             _scoreText.alignment = TextAlignmentOptions.TopLeft;
             _tagButton = MakeButton(hp, "TAG!", BR, new Vector2(-170, 400), new Vector2(170, 170), new Color(0.9f, 0.2f, 0.2f, 0.85f), PressTag, 44).gameObject;

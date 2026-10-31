@@ -35,30 +35,44 @@ server.listen(0, async () => {
     b.send({ t: 'join', code: room.code.toLowerCase(), name: 'Bob' });
     const jb = await b.wait('joined');
     await b.wait('room');
+    // votes: both vote City, it must win
+    a.send({ t: 'vote', map: 2 }); b.send({ t: 'vote', map: 2 });
+    await sleep(100);
     b.send({ t: 'start' }); await sleep(100);
     assert(!a.msgs.find(m => m.t === 'start'), 'non-host must not start');
     a.send({ t: 'start' });
     const sa = await a.wait('start'); await b.wait('start');
+    assert.strictEqual(sa.map, 2, 'City should win the vote');
+    assert.strictEqual(sa.duration, 120);
+    assert([ja.id, jb.id].includes(sa.it), 'someone must be it');
+    const it = sa.it === ja.id ? a : b, other = sa.it === ja.id ? b : a;
+    const itId = sa.it, otherId = itId === ja.id ? jb.id : ja.id;
     console.log('start msg', JSON.stringify(sa).slice(0, 200));
-    // place players: A at 0,0 facing +z (ry=0); B at 0,2
-    a.send({ t: 'state', x: 0, z: 0, ry: 0 });
-    b.send({ t: 'state', x: 0, z: 2, ry: Math.PI }); // B faces A too
-    await sleep(150);
-    // both press tag at once; first one wins, other is stunned
-    a.send({ t: 'tag' }); b.send({ t: 'tag' });
-    const t = await a.wait('tagged');
-    assert.strictEqual(t.by, ja.id); assert.strictEqual(t.target, jb.id);
-    await sleep(150);
-    const sc = a.msgs.filter(m => m.t === 'tagged');
-    assert.strictEqual(sc.length, 1, 'second press during stun must not tag');
+    // place players: "it" at 0,0 facing +z, the other 2 m ahead
+    it.send({ t: 'state', x: 0, z: 0, ry: 0 });
+    other.send({ t: 'state', x: 0, z: 2, ry: Math.PI });
+    await sleep(1100); // the new "it" is frozen for 1 s at the start
+    // the player who is NOT it can't tag
+    other.send({ t: 'tag' }); await sleep(150);
+    assert(!it.msgs.find(m => m.t === 'tagged'), 'only "it" can tag');
+    // it tags -> other becomes it
+    it.send({ t: 'tag' });
+    const t = await it.wait('tagged');
+    assert.strictEqual(t.by, itId); assert.strictEqual(t.target, otherId); assert.strictEqual(t.it, otherId);
+    // frozen new "it" can't tag at once, and can't hand it straight back
+    other.send({ t: 'tag' }); await sleep(200);
+    assert.strictEqual(it.msgs.filter(m => m.t === 'tagged').length, 1, 'new it is frozen');
+    await sleep(1600);
+    other.send({ t: 'tag' }); await other.wait('miss');   // within the no-tag-back window
+    console.log('pass-the-tag ok');
     // out of range / behind
-    a.send({ t: 'state', x: 0, z: 0, ry: Math.PI }); await sleep(150);
+    it.send({ t: 'state', x: 50, z: 50, ry: 0 }); await sleep(150);
     await sleep(700);
-    a.send({ t: 'tag' });
-    await a.wait('miss');
+    other.send({ t: 'tag' });
+    await other.wait('miss');
+    const info = [...(await a.wait('room').catch(() => ({ players: [] }))).players];
     // colours, wins, kick
     assert.notStrictEqual(room.players[0].color, undefined);
-    const r2 = await a.wait('room').catch(() => null);
     b.send({ t: 'kick', id: ja.id }); await sleep(100);
     a.send({ t: 'kick', id: jb.id });
     await b.wait('kicked');
@@ -69,7 +83,7 @@ server.listen(0, async () => {
     c.send({ t: 'joinpublic', name: 'Cy' }); await c.wait('joined');
     d.send({ t: 'joinpublic', name: 'Di' }); await d.wait('joined');
     const st = await c.wait('start', 12000);
-    assert(st.left > 50);
+    assert(st.left > 50); assert(st.map >= 0 && st.map <= 2);
     console.log('public auto-start ok');
     console.log('ALL TESTS PASSED');
     process.exit(0);

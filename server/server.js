@@ -6,7 +6,13 @@ const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 8080;
 const TICK_HZ = 15;
-const ROUND_SECONDS = 60;
+const FAST = !!process.env.TAG_FAST;   // tests only: shorter waits
+// Maps: 0 = Arena (the original small one), 1 = School (~150 m), 2 = City (~250 m).
+const MAP_COUNT = 3;
+const MAP_ROUND_SECONDS = [60, 90, 120];   // bigger map, longer round
+const MAP_SPAWN_RADIUS = [9, 20, 24];      // players start on a ring around the centre plaza
+const MAP_LIMIT = [40, 90, 140];           // clamp for reported positions (half size + a margin)
+const NO_TAG_BACK_MS = 3500;               // the player who just handed over "it" can't be tagged straight back by them
 const MAX_PLAYERS = 8;
 const TAG_RANGE = 3.0;          // metres, a little generous for latency
 const TAG_MIN_DOT = 0.5;        // target must be within ~60 degrees of where the tagger looks
@@ -15,8 +21,8 @@ const STUN_MS = 1500;           // a tagged player can't tag back for a moment
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O
 
 const PUBLIC_CODE = 'PUBLIC';
-const PUBLIC_COUNTDOWN_MS = 6000;   // public game: wait this long once 2+ players are in
-const PUBLIC_BREAK_MS = 8000;       // public game: pause between rounds
+const PUBLIC_COUNTDOWN_MS = FAST ? 1500 : 15000;   // public game: wait this long once 2+ players are in
+const PUBLIC_BREAK_MS = FAST ? 300 : 8000;       // public game: pause between rounds
 const rooms = new Map(); // code -> room
 let nextId = 1;
 
@@ -56,18 +62,20 @@ function roomInfo(room) {
     hostId: room.hostId,
     phase: room.phase,
     isPublic: room.isPublic,
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: p.score, wins: p.wins, color: p.color })),
+    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: Math.floor(p.score), wins: p.wins, color: p.color, vote: p.vote })),
+    map: room.map,
+    it: room.itId || 0,
   };
 }
 
 function scoresOf(room) {
-  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: p.score }));
+  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: Math.floor(p.score) }));
 }
 
 function createRoom(host, isPublic) {
   const code = isPublic ? PUBLIC_CODE : makeCode();
   if (!code) return null;
-  const room = { code, isPublic: !!isPublic, hostId: isPublic ? 0 : host.id, phase: 'lobby', players: new Map(), endsAt: 0, nextStart: 0, timer: null, tick: null };
+  const room = { code, isPublic: !!isPublic, hostId: isPublic ? 0 : host.id, phase: 'lobby', map: 0, itId: 0, lastTick: Date.now(), players: new Map(), endsAt: 0, nextStart: 0, timer: null, tick: null };
   rooms.set(code, room);
   room.tick = setInterval(() => tickRoom(room), 1000 / TICK_HZ);
   return room;
@@ -78,11 +86,29 @@ function addPlayer(room, p) {
   p.room = room;
   p.score = 0;
   p.wins = 0;
+  p.vote = -1;
+  p.noTagId = 0; p.noTagUntil = 0;
   const used = new Set([...room.players.values()].filter(o => o !== p).map(o => o.color));
   p.color = 0; while (used.has(p.color)) p.color++;
   p.stunUntil = 0;
   p.lastTagAt = 0;
   p.x = 0; p.z = 0; p.ry = 0;
+}
+
+// Count the lobby votes; most votes wins, ties are broken at random, no votes = random map.
+function pickMap(room) {
+  const counts = new Array(MAP_COUNT).fill(0);
+  for (const p of room.players.values()) if (p.vote >= 0 && p.vote < MAP_COUNT) counts[p.vote]++;
+  const top = Math.max(...counts);
+  const best = [];
+  counts.forEach((c, i) => { if (c === top) best.push(i); });
+  return best[Math.floor(Math.random() * best.length)];
+}
+
+function spawnFor(room, i, n) {
+  const r = MAP_SPAWN_RADIUS[room.map];
+  const angle = (i / Math.max(1, n)) * Math.PI * 2;
+  return { x: Math.cos(angle) * r, z: Math.sin(angle) * r };
 }
 
 function removePlayer(p) {
@@ -97,26 +123,41 @@ function removePlayer(p) {
     return;
   }
   if (!room.isPublic && room.hostId === p.id) room.hostId = room.players.keys().next().value; // host leaves -> next player hosts
+  if (room.phase === 'playing' && room.itId === p.id) pickNewIt(room);
   broadcast(room, roomInfo(room));
   if (room.phase === 'playing' && room.players.size < 2) endRound(room);
 }
 
+function pickNewIt(room) {
+  const ids = [...room.players.keys()];
+  room.itId = ids.length ? ids[Math.floor(Math.random() * ids.length)] : 0;
+  const it = room.players.get(room.itId);
+  if (it) it.stunUntil = Date.now() + 1000;
+}
+
 function startRound(room) {
+  room.map = pickMap(room);
+  const seconds = MAP_ROUND_SECONDS[room.map];
   room.phase = 'playing';
-  room.endsAt = Date.now() + ROUND_SECONDS * 1000;
+  room.roundSeconds = seconds;
+  room.endsAt = Date.now() + seconds * 1000;
+  room.lastTick = Date.now();
   let i = 0;
   const n = room.players.size;
   for (const p of room.players.values()) {
     p.score = 0;
     p.stunUntil = 0;
-    const angle = (i / n) * Math.PI * 2;
-    p.spawn = { x: Math.cos(angle) * 9, z: Math.sin(angle) * 9 };
+    p.noTagId = 0; p.noTagUntil = 0;
+    p.spawn = spawnFor(room, i, n);
+    p.x = p.spawn.x; p.z = p.spawn.z;
+    p.vote = -1;
     i++;
   }
+  pickNewIt(room);
   room.nextStart = 0;
-  broadcast(room, { t: 'start', duration: ROUND_SECONDS, left: ROUND_SECONDS, spawns: [...room.players.values()].map(p => ({ id: p.id, x: p.spawn.x, z: p.spawn.z })) });
+  broadcast(room, { t: 'start', map: room.map, it: room.itId, duration: seconds, left: seconds, spawns: [...room.players.values()].map(p => ({ id: p.id, x: p.spawn.x, z: p.spawn.z })) });
   broadcast(room, roomInfo(room));
-  room.timer = setTimeout(() => endRound(room), ROUND_SECONDS * 1000);
+  room.timer = setTimeout(() => endRound(room), seconds * 1000);
 }
 
 function endRound(room) {
@@ -125,6 +166,7 @@ function endRound(room) {
   room.phase = 'lobby';
   if (room.isPublic) room.nextStart = Date.now() + PUBLIC_BREAK_MS;
   const scores = scoresOf(room).sort((a, b) => b.score - a.score);
+  room.itId = 0;
   const top = scores.length ? scores[0].score : 0;
   const winnerList = scores.filter(s => s.score === top && top > 0);
   for (const w of winnerList) { const wp = room.players.get(w.id); if (wp) wp.wins++; }
@@ -135,8 +177,15 @@ function endRound(room) {
 
 function tickRoom(room) {
   const players = [...room.players.values()].map(p => ({ id: p.id, x: p.x, z: p.z, ry: p.ry }));
-  const msg = { t: 'snap', players };
-  if (room.phase === 'playing') msg.left = Math.max(0, (room.endsAt - Date.now()) / 1000);
+  const msg = { t: 'snap', players, it: room.itId || 0 };
+  const nowT = Date.now();
+  const dt = Math.min(0.5, (nowT - room.lastTick) / 1000);
+  room.lastTick = nowT;
+  if (room.phase === 'playing') {
+    msg.left = Math.max(0, (room.endsAt - nowT) / 1000);
+    // Points are seconds spent NOT being "it".
+    for (const p of room.players.values()) if (p.id !== room.itId) p.score += dt;
+  }
   if (room.isPublic && room.phase === 'lobby') {
     if (room.players.size >= 2) {
       if (!room.nextStart) room.nextStart = Date.now() + PUBLIC_COUNTDOWN_MS;
@@ -149,12 +198,13 @@ function tickRoom(room) {
   broadcast(room, msg);
 }
 
-// The heart of the game: who gets tagged when someone presses TAG.
+// The heart of the game: only the "it" player can tag. Whoever they tag becomes the new "it".
 function handleTag(p) {
   const room = p.room;
   if (!room || room.phase !== 'playing') return;
+  if (room.itId !== p.id) return;                // only the tagger can tag
   const now = Date.now();
-  if (now < p.stunUntil) return;                 // stunned players can't tag
+  if (now < p.stunUntil) return;                 // a freshly tagged player is frozen for a moment
   if (now - p.lastTagAt < TAG_COOLDOWN_MS) return;
   p.lastTagAt = now;
 
@@ -162,7 +212,7 @@ function handleTag(p) {
   let best = null, bestDist = Infinity;
   for (const o of room.players.values()) {
     if (o.id === p.id) continue;
-    if (now < o.stunUntil) continue;             // can't be tagged again while stunned
+    if (p.noTagId === o.id && now < p.noTagUntil) continue; // can't hand it straight back
     const dx = o.x - p.x, dz = o.z - p.z;
     const dist = Math.hypot(dx, dz);
     if (dist > TAG_RANGE || dist < 0.0001) continue;
@@ -172,9 +222,10 @@ function handleTag(p) {
   }
   if (!best) { send(p.ws, { t: 'miss' }); return; }
 
+  room.itId = best.id;
   best.stunUntil = now + STUN_MS;
-  p.score += 1;
-  broadcast(room, { t: 'tagged', by: p.id, target: best.id, byName: p.name, targetName: best.name, stunMs: STUN_MS, scores: scoresOf(room) });
+  best.noTagId = p.id; best.noTagUntil = now + NO_TAG_BACK_MS;
+  broadcast(room, { t: 'tagged', by: p.id, target: best.id, it: best.id, byName: p.name, targetName: best.name, stunMs: STUN_MS, scores: scoresOf(room) });
 }
 
 wss.on('connection', (ws) => {
@@ -207,8 +258,10 @@ wss.on('connection', (ws) => {
         send(ws, { t: 'joined', id: p.id });
         if (room.phase === 'playing') {
           const a = Math.random() * Math.PI * 2;
-          p.spawn = { x: Math.cos(a) * 9, z: Math.sin(a) * 9 };
-          send(ws, { t: 'start', duration: ROUND_SECONDS, left: Math.max(0, (room.endsAt - Date.now()) / 1000), spawns: [{ id: p.id, x: p.spawn.x, z: p.spawn.z }] });
+          const r = MAP_SPAWN_RADIUS[room.map];
+          p.spawn = { x: Math.cos(a) * r, z: Math.sin(a) * r };
+          p.x = p.spawn.x; p.z = p.spawn.z;
+          send(ws, { t: 'start', map: room.map, it: room.itId, duration: room.roundSeconds, left: Math.max(0, (room.endsAt - Date.now()) / 1000), spawns: [{ id: p.id, x: p.spawn.x, z: p.spawn.z }] });
         }
         broadcast(room, roomInfo(room));
         break;
@@ -230,13 +283,22 @@ wss.on('connection', (ws) => {
       case 'state': {
         if (!p.room) return;
         if (Number.isFinite(m.x) && Number.isFinite(m.z) && Number.isFinite(m.ry)) {
-          p.x = Math.max(-200, Math.min(200, m.x));
-          p.z = Math.max(-200, Math.min(200, m.z));
+          const lim = MAP_LIMIT[p.room.map] || 200;
+          p.x = Math.max(-lim, Math.min(lim, m.x));
+          p.z = Math.max(-lim, Math.min(lim, m.z));
           p.ry = m.ry;
         }
         break;
       }
       case 'tag': handleTag(p); break;
+      case 'vote': {
+        const room = p.room;
+        if (!room || room.phase !== 'lobby') return;
+        const v = Number(m.map);
+        p.vote = (Number.isInteger(v) && v >= 0 && v < MAP_COUNT) ? v : -1;
+        broadcast(room, roomInfo(room));
+        break;
+      }
       case 'start': {
         const room = p.room;
         if (!room || room.isPublic || room.hostId !== p.id || room.phase !== 'lobby') return;

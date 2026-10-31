@@ -81,7 +81,7 @@ namespace TagGame.UI
 
         private void HandleRoundEnded(bool survived)
         {
-            gameOverText.text = survived ? "Time's up — you survived!" : "You got tagged. You lose!";
+            gameOverText.text = gameManager.ResultSummary;
             gameOverPanel.SetActive(true);
         }
     }
