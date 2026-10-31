@@ -60,7 +60,7 @@ namespace TagGame.Spectate
             if (_label != null) _label.text = SpectateSettings.Label;
         }
 
-        private static string Url()
+        public static string ServerUrl()
         {
             if (PlayerPrefs.GetInt("TagGame.MpServerMode", 0) == 1)
             {
@@ -80,7 +80,7 @@ namespace TagGame.Spectate
                 if (GameSocket.State == GameSocket.Closed && Time.unscaledTime >= _nextTry)
                 {
                     _nextTry = Time.unscaledTime + 15f;
-                    GameSocket.Connect(Url());
+                    GameSocket.Connect(ServerUrl());
                     _owns = true;
                 }
                 string drain;

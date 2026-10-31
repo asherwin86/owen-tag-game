@@ -43,12 +43,12 @@ namespace TagGame.Multiplayer
         }
         [Serializable] private class Out { public string t; public string name; public string code; public int map; }
 
-        private static readonly Color[] Palette =
+        internal static readonly Color[] Palette =
         {
             new Color(0.2f, 0.85f, 0.9f), new Color(0.95f, 0.35f, 0.35f), new Color(0.4f, 0.85f, 0.35f), new Color(0.98f, 0.8f, 0.2f),
             new Color(0.75f, 0.45f, 0.95f), new Color(0.98f, 0.55f, 0.2f), new Color(0.95f, 0.5f, 0.8f), new Color(0.95f, 0.95f, 0.95f),
         };
-        private static Color ColorOf(int i) => Palette[Mathf.Abs(i) % Palette.Length];
+        internal static Color ColorOf(int i) => Palette[Mathf.Abs(i) % Palette.Length];
 
         private enum Mode { Idle, Menu, Room, Playing }
 
@@ -723,19 +723,19 @@ namespace TagGame.Multiplayer
             _resultsPanel.SetActive(false);
         }
 
-        private static readonly Vector2 C = new Vector2(0.5f, 0.5f);
-        private static readonly Vector2 T = new Vector2(0.5f, 1f);
-        private static readonly Vector2 TL = new Vector2(0f, 1f);
-        private static readonly Vector2 BR = new Vector2(1f, 0f);
+        internal static readonly Vector2 C = new Vector2(0.5f, 0.5f);
+        internal static readonly Vector2 T = new Vector2(0.5f, 1f);
+        internal static readonly Vector2 TL = new Vector2(0f, 1f);
+        internal static readonly Vector2 BR = new Vector2(1f, 0f);
 
-        private static void Stretch(RectTransform rt)
+        internal static void Stretch(RectTransform rt)
         {
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
         }
 
-        private static GameObject MakePanel(Transform parent, string name, Color color)
+        internal static GameObject MakePanel(Transform parent, string name, Color color)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image));
             go.transform.SetParent(parent, false);
@@ -744,7 +744,7 @@ namespace TagGame.Multiplayer
             return go;
         }
 
-        private static TMP_Text MakeText(Transform parent, string text, float size, Vector2 anchor, Vector2 pos, Vector2 dim)
+        internal static TMP_Text MakeText(Transform parent, string text, float size, Vector2 anchor, Vector2 pos, Vector2 dim)
         {
             var go = new GameObject("Text", typeof(RectTransform));
             go.transform.SetParent(parent, false);
@@ -762,7 +762,7 @@ namespace TagGame.Multiplayer
             return t;
         }
 
-        private static Button MakeButton(Transform parent, string label, Vector2 anchor, Vector2 pos, Vector2 dim, Color color, UnityAction onClick, float fontSize)
+        internal static Button MakeButton(Transform parent, string label, Vector2 anchor, Vector2 pos, Vector2 dim, Color color, UnityAction onClick, float fontSize)
         {
             var go = new GameObject(label + "Button", typeof(RectTransform), typeof(Image), typeof(Button));
             go.transform.SetParent(parent, false);
@@ -780,7 +780,7 @@ namespace TagGame.Multiplayer
             return btn;
         }
 
-        private static TMP_InputField MakeInput(Transform parent, string placeholder, Vector2 anchor, Vector2 pos, Vector2 dim, int maxLen, bool upper)
+        internal static TMP_InputField MakeInput(Transform parent, string placeholder, Vector2 anchor, Vector2 pos, Vector2 dim, int maxLen, bool upper)
         {
             var go = new GameObject("Input", typeof(RectTransform), typeof(Image));
             go.transform.SetParent(parent, false);
