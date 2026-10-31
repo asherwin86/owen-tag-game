@@ -85,7 +85,12 @@ namespace TagGame.Gameplay
             if (_lobbyCircle != null) _lobbyCircle.SetActive(false);
         }
 
-        private void TeleportTo(Vector3 position, Quaternion rotation)
+        /// <summary>Set by multiplayer while the player is stunned.</summary>
+        private Camera _cam;
+        public bool Frozen { get; set; }
+        public Vector3 HomePosition => _homePosition;
+
+        public void TeleportTo(Vector3 position, Quaternion rotation)
         {
             // CharacterController overrides transform changes unless disabled first.
             _controller.enabled = false;
@@ -95,7 +100,7 @@ namespace TagGame.Gameplay
 
         private void Update()
         {
-            if (IsTagged)
+            if (IsTagged || Frozen)
             {
                 return; // Frozen once tagged; TagGameManager decides what happens next.
             }
@@ -122,6 +127,9 @@ namespace TagGame.Gameplay
             Vector3 worldMove = transform.TransformDirection(new Vector3(inputDir.x, 0f, inputDir.z));
             // Re-flatten in case of any rotation drift.
             worldMove = new Vector3(inputDir.x, 0f, inputDir.z);
+            // relative to the camera so the orbit camera feels natural
+            if (_cam == null) _cam = Camera.main;
+            if (_cam != null) worldMove = Quaternion.Euler(0f, _cam.transform.eulerAngles.y, 0f) * worldMove;
 
             if (worldMove.sqrMagnitude > 0.01f)
             {

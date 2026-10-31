@@ -28,6 +28,9 @@ namespace TagGame.UI
         [SerializeField] private TMP_Text gameOverText;
         [SerializeField] private Button playAgainButton;
 
+        public GameObject StartPanel => startPanel;
+        public Button StartButton => startButton;
+
         private void Awake()
         {
             startButton.onClick.AddListener(HandleStartClicked);
@@ -78,7 +81,7 @@ namespace TagGame.UI
 
         private void HandleRoundEnded(bool survived)
         {
-            gameOverText.text = survived ? "Time's up — you survived!" : "You got tagged. You lose!";
+            gameOverText.text = gameManager.ResultSummary;
             gameOverPanel.SetActive(true);
         }
     }
