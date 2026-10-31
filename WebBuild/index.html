@@ -201,6 +201,116 @@ nav .links a.on{background:var(--line);color:var(--ink)}
 .watch-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 14px;font-size:14px;font-weight:600;color:var(--muted)}
 .watch-board b{color:var(--ink)}
 @media (max-width:820px){.watch{grid-template-columns:1fr}}
+
+/* ---------- hero: full-bleed sunny arena with a live isometric game behind the title */
+:root{--sky1:#7fd0f2;--sky2:#c9efd0;--heroInk:#0f2a17;--band:#e4f0dc;--night:#0d1b14}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--sky1:#0b2a3a;--sky2:#123a24;--heroInk:#eaf7e6;--band:#14231a;--night:#08120d}}
+:root[data-theme="dark"]{--sky1:#0b2a3a;--sky2:#123a24;--heroInk:#eaf7e6;--band:#14231a;--night:#08120d}
+.topbar{position:sticky}
+.topbar nav{border-radius:999px}
+.hero2{position:relative;margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));min-height:600px;background:linear-gradient(180deg,var(--sky1),var(--sky2) 78%);overflow:hidden;isolation:isolate}
+.hero2 canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:pan-y}
+.hero2-in{position:relative;z-index:2;max-width:1080px;margin:0 auto;padding:56px max(16px,env(safe-area-inset-left,0px)) 120px;pointer-events:none}
+.hero2-copy{max-width:520px;pointer-events:auto}
+.badge{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:14px;background:color-mix(in srgb,var(--surface) 85%,transparent);color:var(--ink);padding:6px 14px 6px 8px;border-radius:999px;box-shadow:var(--shadow)}
+.badge i{width:10px;height:10px;border-radius:5px;background:var(--tiger);box-shadow:0 0 0 4px color-mix(in srgb,var(--tiger) 30%,transparent);animation:ping 1.6s infinite}
+@keyframes ping{50%{box-shadow:0 0 0 8px transparent}}
+.title3d{font-size:clamp(52px,9vw,104px);line-height:.95;margin:18px 0 0;color:#fff;letter-spacing:-.01em}
+.title3d span{display:inline-block;text-shadow:0 1px 0 #1f6a2b,0 2px 0 #1f6a2b,0 3px 0 #1d6128,0 4px 0 #1b5925,0 5px 0 #185022,0 6px 0 #16471f,0 10px 18px rgba(0,0,0,.35);animation:pop .7s cubic-bezier(.2,1.6,.4,1) both}
+.title3d .w1{transform:rotate(-3deg)}
+.title3d .w2{animation-delay:.12s;transform:rotate(2deg)}
+.title3d .w3{animation-delay:.24s}
+.title3d em{font-style:normal;color:#ffd84a;text-shadow:0 1px 0 #b84d00,0 2px 0 #b84d00,0 3px 0 #a64400,0 4px 0 #943c00,0 5px 0 #823400,0 6px 0 #702c00,0 10px 18px rgba(0,0,0,.35)}
+@keyframes pop{from{transform:scale(.6) rotate(-6deg)}}
+.hero2 .lead{color:var(--heroInk);font-size:20px;font-weight:600;margin:20px 0 26px;max-width:34ch;text-shadow:0 1px 0 color-mix(in srgb,var(--sky2) 70%,transparent)}
+.hero-hint{margin-top:16px;font-size:14px;font-weight:800;color:var(--heroInk);opacity:.8}
+.wave{position:absolute;left:0;right:0;bottom:-1px;width:100%;height:70px;z-index:3;fill:var(--bg)}
+.btn{position:relative;overflow:hidden}
+.btn::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.45) 50%,transparent 65%);transform:translateX(-120%);transition:transform .6s}
+.btn:hover::after{transform:translateX(120%)}
+.btn.big{font-size:26px;padding:14px 34px;border-radius:16px;box-shadow:0 6px 0 var(--grass-deep),0 14px 24px rgba(31,106,43,.35)}
+.btn.alt.light{background:color-mix(in srgb,var(--surface) 80%,transparent);box-shadow:0 5px 0 color-mix(in srgb,var(--ink) 25%,transparent)}
+@media (max-width:820px){
+  .hero2{min-height:0}
+  .hero2-in{padding-bottom:330px;padding-top:36px}
+}
+
+/* ---------- ticker */
+.ticker{margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));background:var(--ink);color:var(--bg);overflow:hidden;white-space:nowrap;padding-block:10px;transform:rotate(-1deg);margin-top:-8px;position:relative;z-index:4}
+.ticker-track{display:inline-flex;gap:36px;animation:tick 40s linear infinite;font:800 18px var(--display)}
+.ticker-track span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:5px;background:var(--tiger);margin-right:12px;vertical-align:middle}
+.ticker-track .g::before{background:#2fbf4a}.ticker-track .y::before{background:var(--sun)}.ticker-track .r::before{background:#e0383a}
+@keyframes tick{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.ticker-track,.title3d span,.badge i,.pawn{animation:none}}
+
+/* ---------- full-bleed colour bands */
+.band{position:relative;background:var(--band);box-shadow:0 0 0 100vmax var(--band);clip-path:inset(0 -100vmax);margin-block:32px}
+.band.night{--bg:#102018;--surface:#16291e;--ink:#eaf3e6;--muted:#9db0a2;--line:#29402f;--band:var(--night);color:var(--ink)}
+.band.night .sec-head h2{color:#fff}
+.band.night .sec-head h2::after{content:" ● LIVE";font-size:.42em;vertical-align:middle;color:#ff5a5a;letter-spacing:.08em}
+
+/* ---------- facts as chunky stickers */
+.facts{margin-top:28px}
+.fact{border:3px solid var(--line);box-shadow:0 6px 0 var(--line)}
+.fact:nth-child(1){transform:rotate(-1.5deg)}.fact:nth-child(2){transform:rotate(1deg)}.fact:nth-child(3){transform:rotate(-.5deg)}.fact:nth-child(4){transform:rotate(1.5deg)}
+.fact:nth-child(2) b{color:var(--player)}.fact:nth-child(3) b{color:var(--tiger)}.fact:nth-child(4) b{color:#e0a400}
+
+/* ---------- cast */
+.cast{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px}
+.castcard{background:var(--surface);border-radius:20px;padding:22px 20px 20px;box-shadow:var(--shadow);text-align:center;min-width:0;transition:transform .2s}
+.castcard:hover{transform:translateY(-6px) rotate(-1deg)}
+.castcard p{color:var(--muted);font-size:15px;margin-top:6px}
+.pawn{position:relative;width:64px;height:92px;margin:0 auto 14px;border-radius:32px;animation:bob 2.4s ease-in-out infinite}
+.pawn::after{content:"";position:absolute;left:8px;right:8px;bottom:-14px;height:10px;border-radius:50%;background:rgba(0,0,0,.18)}
+.pawn i{position:absolute;top:24px;left:14px;width:14px;height:14px;border-radius:7px;background:#fff;box-shadow:22px 0 0 #fff}
+.pawn i::after{content:"";position:absolute;top:4px;left:5px;width:6px;height:6px;border-radius:3px;background:#111;box-shadow:22px 0 0 #111}
+.pawn.teal{background:radial-gradient(circle at 30% 25%,#9ff4f7,var(--player) 55%,#0a7c82)}
+.pawn.mag{background:radial-gradient(circle at 30% 25%,#f6a6f6,var(--tiger) 55%,#7a107a);animation-delay:.4s}
+.pawn.ball{width:56px;height:56px;margin-top:22px;margin-bottom:28px;background:radial-gradient(circle at 30% 30%,#ff9b9b,#e0383a 55%,#8a1414);animation:bounce 1s ease-in-out infinite}
+.pawn.ball::after{bottom:-30px}
+.pawn.friends{width:120px;background:none;animation:none}
+.pawn.friends i{top:20px;width:36px;height:64px;border-radius:18px;box-shadow:none;background:#fad133}
+.pawn.friends i:nth-child(1){left:0;background:#66d959}.pawn.friends i:nth-child(2){left:42px;top:10px;background:#bf73f2}.pawn.friends i:nth-child(3){left:84px;background:#fa8c33}
+.pawn.friends i::after{display:none}
+@keyframes bob{50%{transform:translateY(-8px)}}
+@keyframes bounce{50%{transform:translateY(-16px)}}
+
+/* ---------- tilted map plans */
+.mapart{background:transparent;overflow:visible;perspective:1100px}
+.mapart svg{border-radius:14px;box-shadow:0 30px 40px -18px rgba(0,0,0,.45);transform:rotateX(24deg) rotateZ(-6deg) scale(.92);transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.mapart:hover svg{transform:none}
+@media (prefers-reduced-motion:reduce){.mapart svg{transition:none}}
+
+/* ---------- sections a little roomier, headings with a marker swash */
+.sec-head h2{position:relative;display:inline-block}
+.sec-head h2::before{content:"";position:absolute;left:-6px;right:-6px;bottom:4px;height:.32em;background:color-mix(in srgb,var(--sun) 55%,transparent);z-index:-1;border-radius:6px;transform:rotate(-1deg)}
+.band.night .sec-head h2::before{background:color-mix(in srgb,var(--tiger) 45%,transparent)}
+section{isolation:isolate}
+
+/* ---------- finale */
+.finale{position:relative;margin-block:40px 10px;border-radius:28px;background:linear-gradient(135deg,var(--grass),var(--grass-deep));color:#fff;text-align:center;overflow:hidden;padding:56px 20px 70px}
+.finale h2{font-size:clamp(36px,6vw,64px);text-shadow:0 4px 0 rgba(0,0,0,.2)}
+.finale p{color:#dff2da;margin:10px 0 22px}
+.finale .btn.big{background:#ffd84a;color:#3b2a00;box-shadow:0 6px 0 #b88a00,0 14px 24px rgba(0,0,0,.3)}
+.finale .chase{position:absolute;left:0;right:0;bottom:6px;margin:0;border:0}
+
+.sec-head h2{align-self:flex-start}
+.playframe{background:radial-gradient(120% 90% at 50% 120%,rgba(255,216,74,.25),transparent 60%),repeating-conic-gradient(from 45deg,#2f8f3a 0 25%,#2a8034 0 50%) 0 0/56px 56px}
+.playframe::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,30,14,.15),rgba(8,30,14,.65))}
+.playframe .inner{position:relative}
+.playframe .inner b{font-size:clamp(30px,6vw,56px);text-shadow:0 4px 0 rgba(0,0,0,.25)}
+.playframe .btn{font-size:26px;padding:14px 34px;background:#ffd84a;color:#3b2a00;box-shadow:0 6px 0 #b88a00,0 14px 24px rgba(0,0,0,.3)}
+.playframe .pawnrow{display:flex;gap:14px;justify-content:center}
+.playframe .pawnrow .pawn{width:34px;height:50px;margin:0}
+.playframe .pawnrow .pawn i{top:12px;left:6px;width:9px;height:9px;box-shadow:13px 0 0 #fff}
+.playframe .pawnrow .pawn i::after{top:2px;left:3px;width:4px;height:4px;box-shadow:13px 0 0 #111}
+@media (max-width:820px){
+  .topbar nav{flex-wrap:nowrap}
+  .topbar nav .links{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;min-width:0;-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent)}
+  .topbar nav .links::-webkit-scrollbar{display:none}
+  .topbar nav .links a,.topbar .themebtn{flex:none}
+  .logo{font-size:22px;flex:none}
+}
 </style>
 </head>
 <body>
@@ -214,22 +324,27 @@ nav .links a.on{background:var(--line);color:var(--ink)}
     </div>
   </nav>
 </div>
-<div class="wrap">
-  <header class="hero" id="top">
-    <div>
-      <h1>Run. Tag. Don't be <em>IT</em>.</h1>
-      <p class="lead">A pass-the-tag chase game. One player is IT, everyone else runs. Play against a pack of tiger bots, or jump into a room with up to eight friends.</p>
+<header class="hero2" id="top">
+  <canvas id="hero-cv" aria-label="Animated scene: a teal player and magenta tigers playing tag on a small grass arena"></canvas>
+  <div class="hero2-in">
+    <div class="hero2-copy">
+      <span class="badge"><i></i>New: School and City maps, plus Spectate</span>
+      <h1 class="title3d"><span class="w1">Run.</span> <span class="w2">Tag.</span> <span class="w3">Don't be <em>IT</em>.</span></h1>
+      <p class="lead">A pass-the-tag chase game. One player is IT, everyone else runs. Take on a pack of tiger bots, or jump into a room with up to eight friends.</p>
       <div class="cta">
-        <a class="btn" href="#play">Play now</a>
-        <a class="btn alt" href="#try">Try the mini game</a>
+        <a class="btn big" href="#play">Play now</a>
+        <a class="btn alt light big" href="#watch">Watch live</a>
       </div>
+      <p class="hero-hint" id="hero-hint">Move your mouse or finger over the arena. You are the teal one.</p>
     </div>
-    <figure class="shot">
-      <img src="data:image/jpeg;base64,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KKKYB6n1ooopCDpR0Oe/XNFFMAwPSjHpRRQAYI703FOooGJRS0hFIYUUYxRQAUUUUCCkxmlooAQjFJTqQigYlFGMUUAFBFFFACYxRS0GgBKKKKBCGilooASkP+T6UpoofmFrnG+K/AP9uXrX9pOIbh1HmK+SGI4B9uKy9M+Fb71fUrtcD+CBSc/UmvRccY7UEV60M6xcKfs4ysj1IZxiow9mpWRBZ2kNhbJb20axxIMKF6fX61K33j9aU/0NI33j9a81ScpOcnds8ubcnzSd2yR/vH6mkpX+8fqaSoe7EtgoooFIYCloooEFFFFABQKBS0AFFFFABRRSigBKUUtFABRRRQAUUUUAFFAGaXGKAE60AUtFABRRRQAUUUUAFFFFABRRRQAUUUUDCigUtAxKKWigBKKWigBKKXGaCKAEooxiikAUUUUwCiiigQUUUUCENFLRQMSigijGKBhRRRQIKQ0tFADaKdSGgYlFFFAgNJS0UAJRSmkoAKQ0tFACUUGikwsIelNb7x+tPp6qCoJA6VcdyZDX++fqaSlf75+ppBS6sa2AUtFFIAooooAKBQKWgAooooAKKKUUAApaKKACiiigAoooFAAKWiigAooooAKKKKACiiigAoo60AUAFFLRQAnWgA0tFABtoxilpKACiiigAooooAKKKKACiiigAooooAMZoIxRRQMSiloIoGJRRjFFIAooopiCiiigQhopaQ0DCiiikMKKKKYhDSU6kNACUUUUAFBoooASilNJQAUhpaKBCVIv3R9KZT1+6PpTW7BjG++31NFK/wB8/U0lEtwWwUUUUgCgUCloAKKKKACiilFAAKWiigAooooAKBQKWgAooooAKKKKACiiigAooFLQAgpaKKACiiigAooooAKKKKACiiigAooooGFFFFIYUUUUAFFFFABRRRTAKKKKBBRRRQIKDRRQMSiloNAxKKKKQBRRRTEFIaWigBKKDRSGFFFFMQhpKdSGgBKKKKACg0UGgBKKKKGDCnL90fSm09fuj6Va3IkI/wB8/U02nP8AfP1NNqZblLYKBRSikAUUUUAFFFKKAAUtFFABRRRQAUCgUtABRRRQAUUUUAFFFAoAKBS0UAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFKKSlFAC0UUUAFJjNLRQAhFJjFOooGNopcZoIxQMSiiikAUUUUAFFFFMQUUUUCA0lLQaBiUUUUhhRRRTEFIaWg0AJRRRSAKKKKYCGkpTSUDCiiigANJS0negAp6/dH0plPX7o+lVAiYj/fP1NNpz/fP1NNpPca2AUtAopAFFFFABSigUtABRRRQAUUUCgAFLRRQAUUUUAFFFFAAKWgUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUoGaMYoASjrTqKAEANGMUtFABRRRQAUUUUAFFFFABRRRQAmM0EYpaKBjaKU0lAwooopAFFFFMQUUUUCA0lLQaBiUUUUgCiiimAhopRSGgYUUUUhBSGlpDTASiiikAUGig0wEp6/dH0plPX7o+lNbsmYj/AHz9TTTTn++fqabQ9xrYUUUvakpAFFFFACilo7UUAFFFFACGnCkFLQAUUUUAFFFFABQKDSigAooooAKKKKACiiigAooooAKKKUUAApaKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKQ0tAoGNopTSUhhRRRQIKKKKYgoNFKKBjaKDRQMKKKKBBSGloNACUUUUgCgUUUwENJSmkoGFKKSigQnenr90fSmmnL90fShbsTEf75+ppopz/fP1NIKb3BbBRRRSAKUUlKKAFooooAKKKKAAUtIKWgAooooAKKKKAAUtAooAKKKKACiiigAooooAKKKKAFFLSCloAKKKKACiiigAooopgFFNd1jUs7BVHUk8Cs9vEFgrbRIWH95RxVQpTm/djcwr4qhQ/jSsaVFRQTxXCb4nDj1/wDrVLSaadmrGlOaqLmi00FFFFSWFFFFABRRRQAUUUUAFFFFAxDSUppKBhRRRSAKKKKYgooooADSUppKBhRRRSEFAopRTAaaKDRQMKKKKAENJSmkoAKKKKGJgaVfuj6UhpV+6PpVrciQP98/U0gpX++fqaQVL3KWwUUUUgClFJSigBaKKKACiiigAFLSCloAKKKKACiiigBRRQKKACiiigAooooAKKKKACiiigBRS0gpaACiiigAooopgNkbahJ6AZ6153rfxJuYrl4LKBVWNsFmP3vpXoF3E81vJHGQHZSBnp0rwvVrOex1CaC5TEiscnHWujDU4yepjXqSitDt4/Edz4ljQyp5MaE5RT941sWWntOBsBPGK4/wtcKISh45ru9L1EWoB4NfRUY8lK8D8mzivOrjpqs9ENVJNPuFdcjacMPU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" alt="The player on the School plaza with tigers at the edges and the line Tiger 3 is IT, run" width="570" height="356">
-      <figcaption>A Practice round on the School map.</figcaption>
-    </figure>
-  </header>
-  <div class="chase" aria-hidden="true"><span class="t2"></span><span class="t"></span><span class="p"></span></div>
+  </div>
+  <svg class="wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true"><path d="M0,40 C240,90 480,0 720,40 C960,80 1200,10 1440,45 L1440,90 L0,90 Z"/></svg>
+</header>
+<div class="ticker" aria-hidden="true"><div class="ticker-track">
+  <span>Tiger 3 tagged Tiger 7!</span><span class="g">You tagged Tiger 1!</span><span>Tiger 5 is IT - run!</span><span class="y">New map: City, 250 m</span><span class="r">Tiger 2 tagged you! You're IT!</span><span>Vote for the next map</span><span class="g">Safe for 87 s - new best</span><span class="y">Spectate any game live</span>
+  <span>Tiger 3 tagged Tiger 7!</span><span class="g">You tagged Tiger 1!</span><span>Tiger 5 is IT - run!</span><span class="y">New map: City, 250 m</span><span class="r">Tiger 2 tagged you! You're IT!</span><span>Vote for the next map</span><span class="g">Safe for 87 s - new best</span><span class="y">Spectate any game live</span>
+</div></div>
+<div class="wrap">
 
   <div class="facts">
     <div class="fact"><b>3</b><span>maps, up to 250 m wide</span></div>
@@ -238,15 +353,25 @@ nav .links a.on{background:var(--line);color:var(--ink)}
     <div class="fact"><b>2 min</b><span>longest round</span></div>
   </div>
 
+  <section id="cast">
+    <div class="sec-head"><h2>Meet the cast</h2></div>
+    <div class="cast">
+      <div class="castcard"><div class="pawn teal"><i></i></div><h3>You</h3><p>The teal one. Run while someone else is IT, chase when it's you.</p></div>
+      <div class="castcard"><div class="pawn mag"><i></i></div><h3>The tigers</h3><p>Practice bots. Up to fourteen of them, and they tag each other too.</p></div>
+      <div class="castcard"><div class="pawn ball"></div><h3>The red ball</h3><p>Floats over whoever is IT. Keep an eye on it from anywhere on the map.</p></div>
+      <div class="castcard"><div class="pawn friends"><i></i><i></i><i></i></div><h3>Your friends</h3><p>Eight colours, one room, one code. The host picks when to start.</p></div>
+    </div>
+  </section>
+
   <section id="play">
     <div class="sec-head"><h2>Play it</h2><p>Runs in your browser, no download. Pick Start for Practice or Multiplayer for a room.</p></div>
     <div class="playbox">
-      <div class="playframe" id="playframe"><div class="inner"><b>Ready when you are</b><p>Press play to load the game right here. Use the fullscreen button in the corner for a bigger view.</p><button class="btn" id="playbtn" type="button">Play Tag Game</button></div></div>
+      <div class="playframe" id="playframe"><div class="inner"><div class="pawnrow" aria-hidden="true"><div class="pawn mag"><i></i></div><div class="pawn teal"><i></i></div><div class="pawn mag"><i></i></div></div><b>Ready when you are</b><p>Press play to load the game right here. Use the fullscreen button in the corner for a bigger view.</p><button class="btn" id="playbtn" type="button">Play Tag Game</button></div></div>
       <div class="playbar"><span>Keyboard, touch and controller all work.</span><span>Multiplayer can take up to a minute to connect the first time.</span></div>
     </div>
   </section>
 
-  <section id="how">
+  <section id="how" class="band">
     <div class="sec-head"><h2>How to play</h2><p>One round takes one to two minutes.</p></div>
     <ol class="steps">
       <li><b>Pick a map</b><span>Choose Arena, School or City under Practice map. In a room, everyone votes instead.</span></li>
@@ -309,7 +434,7 @@ nav .links a.on{background:var(--line);color:var(--ink)}
     </div>
   </section>
 
-    <section id="watch">
+    <section id="watch" class="band night">
     <div class="sec-head"><h2>Watch live</h2>
       <p>See anyone's game from above and follow them around the map. Public games and Practice rounds show up here while the player has <b>Allow spectators</b> switched on (it is on by default). Players can turn it off on the title screen for Practice, or in the Multiplayer menu.</p></div>
     <div class="watch" id="watchbox">
@@ -337,7 +462,7 @@ nav .links a.on{background:var(--line);color:var(--ink)}
   </section>
 
 
-  <section id="tips">
+  <section id="tips" class="band">
     <div class="sec-head"><h2>Tips from the tigers</h2></div>
     <div class="tips">
       <div class="tip"><i></i><div><b>Use the freeze</b><span>When you tag someone, run the other way straight away. They can't move for 1.5 seconds and can't tag you back for 3.5.</span></div></div>
@@ -387,6 +512,14 @@ nav .links a.on{background:var(--line);color:var(--ink)}
   <section id="news">
     <div class="sec-head"><h2>What's new</h2><p>This page is updated whenever the game changes.</p></div>
     <div class="log">
+      <div class="entry"><time>November 2026</time><h3>Spectate</h3>
+        <ul>
+          <li>Watch any public game or Practice round live, in 3D from the Spectate button in the game, or from above on this website.</li>
+          <li>Follow any player or fly around the map with a free camera.</li>
+          <li>An Allow spectators switch for Practice and Multiplayer. It is on unless you turn it off.</li>
+          <li>The game now plays right here on the website.</li>
+        </ul>
+      </div>
       <div class="entry"><time>October 2026</time><h3>Big update</h3>
         <ul>
           <li>School and City maps, with map voting in online lobbies and a map picker for Practice.</li>
@@ -410,8 +543,18 @@ nav .links a.on{background:var(--line);color:var(--ink)}
       <details><summary>Why does Multiplayer take so long to connect?</summary><p>The game server sleeps when nobody is using it. The first player to connect wakes it up, which can take up to a minute.</p></details>
       <details><summary>Can I play on a phone or with a controller?</summary><p>Yes. Phones get an on-screen joystick and sprint button, and a controller works with the left stick for moving and the right stick for the camera.</p></details>
       <details><summary>Does getting tagged end my round?</summary><p>No. Every round runs the full time. Being IT just stops your safe seconds from counting.</p></details>
+      <details><summary>Can people watch me play?</summary><p>Yes, while Allow spectators is on. It is on by default. Turn it off on the title screen for Practice, or in the Multiplayer menu, and you disappear from the Watch list and from other people's views.</p></details>
       <details><summary>How is the winner decided?</summary><p>Everyone earns a point for each second they are not IT. When the clock runs out, the highest score wins and ties are shown as ties.</p></details>
     </div>
+  </section>
+
+  <section class="finale">
+    <div class="finale-in">
+      <h2>Ready to run?</h2>
+      <p>It loads in your browser in a few seconds. No sign-up.</p>
+      <a class="btn big" href="#play">Play Tag Game</a>
+    </div>
+    <div class="chase" aria-hidden="true"><span class="t2"></span><span class="t"></span><span class="p"></span></div>
   </section>
 
   <footer>
@@ -660,7 +803,7 @@ nav .links a.on{background:var(--line);color:var(--ink)}
 })();
 
 (function(){
-  var LIVE=true,SERVER="wss://tag-game-server-zsyy.onrender.com";
+  var LIVE=true,SERVER="wss://tag-game-server-9q3z.onrender.com";
   var PAL=['#33d9e6','#f25959','#66d959','#fad133','#bf73f2','#fa8c33','#f280cc','#f2f2f2'];
   var K={0:8,1:2,2:1.2};              // image units per metre on each map plan (plans are 300 x 300)
   var NAMES=['Arena','School','City'];
@@ -818,6 +961,145 @@ nav .links a.on{background:var(--line);color:var(--ink)}
   draw();connect();
   setInterval(function(){if(connected&&!watchKey&&!demo)ask()},6000);
   setInterval(function(){if(view&&view.kind!=='demo'&&view.left>0)view.left=Math.max(0,view.left-.25),updateUI()},250);
+})();
+
+
+(function(){
+  // Live isometric game of tag behind the hero title. You (teal) follow the pointer; tigers play by the real rules.
+  var cv=document.getElementById('hero-cv');if(!cv)return;
+  var g=cv.getContext('2d'),HALF=7,LIM=6.1,R=0.75;
+  var W=0,H=0,ox=0,oy=0,a=20,dpr=1;
+  var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function resize(){
+    var r=cv.getBoundingClientRect();dpr=Math.min(2,window.devicePixelRatio||1);
+    W=r.width;H=r.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);g.setTransform(dpr,0,0,dpr,0,0);
+    if(W<820){a=Math.min((W-24)/26,22);ox=W/2;oy=H-a*7-80}
+    else{a=Math.min(W*0.56/28,(H-120)/17,30);ox=Math.min(W*0.7,W-a*14-20);oy=H*0.5}
+  }
+  function iso(x,z){return[ox+(x-z)*a,oy+(x+z)*a*0.5]}
+  function unIso(px,py){var u=(px-ox)/a,v=(py-oy)/(a*0.5);return{x:(u+v)/2,z:(v-u)/2}}
+
+  var names=['You','Tiger 1','Tiger 2','Tiger 3','Tiger 4','Tiger 5'];
+  var E=names.map(function(n,i){var an=i/names.length*Math.PI*2;return{n:n,x:Math.cos(an)*4,z:Math.sin(an)*4,vx:0,vz:1,sp:i?2.6+Math.random()*.6:3.6,wx:0,wz:0,wt:0}});
+  var it=1,last=-1,freezeUntil=0,noBack=0,t=0,pops=[],parts=[],ptr=null,ptrAt=-99;
+  var trees=[[-6.6,-6.6],[6.7,-5.2],[-5.4,6.7],[6.4,6.4]];
+
+  function dist(p,q){return Math.hypot(p.x-q.x,p.z-q.z)}
+  function steer(e,dx,dz,sp,dt){
+    var l=Math.hypot(dx,dz);if(l<1e-3)return;dx/=l;dz/=l;
+    e.vx+=(dx-e.vx)*Math.min(1,dt*8);e.vz+=(dz-e.vz)*Math.min(1,dt*8);
+    e.x=Math.max(-LIM,Math.min(LIM,e.x+dx*sp*dt));e.z=Math.max(-LIM,Math.min(LIM,e.z+dz*sp*dt));
+  }
+  function pop(text,col,e){pops.push({s:text,c:col,x:e.x,z:e.z,t:t});
+    var p=iso(e.x,e.z);for(var i=0;i<16;i++){var an=Math.random()*7,v=60+Math.random()*120;parts.push({x:p[0],y:p[1]-a*.8,vx:Math.cos(an)*v,vy:Math.sin(an)*v-80,t:t,c:col})}}
+  function tag(i,j){
+    last=i;noBack=t+3.5;it=j;freezeUntil=t+1.5;
+    if(i===0)pop('You tagged '+E[j].n+'!','#2fbf4a',E[j]);
+    else if(j===0)pop(E[i].n+' tagged you!','#e0383a',E[j]);
+    else pop(E[i].n+' tagged '+E[j].n+'!','#f0a020',E[j]);
+  }
+  function step(dt){
+    t+=dt;var frozen=t<freezeUntil,user=t-ptrAt<2.5&&ptr;
+    E.forEach(function(e,i){
+      if(i===it&&frozen)return;
+      if(i===0&&user){steer(e,ptr.x-e.x,ptr.z-e.z,dist(e,ptr)>0.15?e.sp:0,dt);return}
+      if(i===it){
+        var b=-1,bd=1e9;E.forEach(function(o,j){if(j===i||(j===last&&t<noBack))return;var d=dist(e,o);if(d<bd){bd=d;b=j}});
+        if(b>=0)steer(e,E[b].x-e.x,E[b].z-e.z,e.sp*1.12,dt);
+      }else{
+        var c=E[it],d2=dist(e,c);
+        if(d2<4.2){var ax=e.x-c.x,az=e.z-c.z;if(Math.abs(e.x)>LIM-1)ax-=e.x*.6;if(Math.abs(e.z)>LIM-1)az-=e.z*.6;steer(e,ax,az,e.sp*.95,dt)}
+        else{e.wt-=dt;if(e.wt<=0){e.wx=(Math.random()-.5)*2*LIM;e.wz=(Math.random()-.5)*2*LIM;e.wt=2+Math.random()*2}steer(e,e.wx-e.x,e.wz-e.z,1.3,dt)}
+      }
+    });
+    if(!frozen)for(var k=0;k<E.length;k++){if(k===it||(k===last&&t<noBack))continue;if(dist(E[it],E[k])<R){tag(it,k);break}}
+  }
+
+  // ---- drawing
+  function poly(pts,fill){g.beginPath();g.moveTo(pts[0][0],pts[0][1]);for(var i=1;i<pts.length;i++)g.lineTo(pts[i][0],pts[i][1]);g.closePath();g.fillStyle=fill;g.fill()}
+  function arena(){
+    var d=a*0.9,L=iso(-HALF,HALF),B=iso(HALF,HALF),Rr=iso(HALF,-HALF),T=iso(-HALF,-HALF);
+    // drop shadow
+    g.save();g.globalAlpha=.25;poly([[L[0],L[1]+d+18],[B[0],B[1]+d+18],[Rr[0],Rr[1]+d+18],[ox,oy+d+18]],'#000');g.restore();
+    poly([L,B,[B[0],B[1]+d],[L[0],L[1]+d]],'#7a5232');           // left side (dirt)
+    poly([B,Rr,[Rr[0],Rr[1]+d],[B[0],B[1]+d]],'#5e3e25');         // right side
+    poly([[L[0],L[1]+3],[B[0],B[1]+3],[B[0],B[1]+d*.28],[L[0],L[1]+d*.28]],'#3f8f3a');
+    poly([[B[0],B[1]+3],[Rr[0],Rr[1]+3],[Rr[0],Rr[1]+d*.28],[B[0],B[1]+d*.28]],'#2e7a2c');
+    for(var i=-HALF;i<HALF;i++)for(var j=-HALF;j<HALF;j++){
+      poly([iso(i,j),iso(i+1,j),iso(i+1,j+1),iso(i,j+1)],(i+j)&1?'#5fb04f':'#68ba57');
+    }
+    var c=iso(0,0);g.beginPath();g.ellipse(c[0],c[1],1.7*a*1.414,1.7*a*.707,0,0,7);g.fillStyle='rgba(232,185,35,.6)';g.fill();
+    g.lineWidth=2;g.strokeStyle='rgba(255,255,255,.35)';g.stroke();
+    // fence along the back edges
+    g.strokeStyle='rgba(255,255,255,.75)';g.lineWidth=Math.max(1.5,a*.08);
+    [[T,L],[T,Rr]].forEach(function(s){g.beginPath();g.moveTo(s[0][0],s[0][1]-a*.5);g.lineTo(s[1][0],s[1][1]-a*.5);g.stroke();
+      for(var k=0;k<=8;k++){var x=s[0][0]+(s[1][0]-s[0][0])*k/8,y=s[0][1]+(s[1][1]-s[0][1])*k/8;g.beginPath();g.moveTo(x,y);g.lineTo(x,y-a*.62);g.stroke()}});
+  }
+  function shade(hex,f){var n=parseInt(hex.slice(1),16),r=n>>16,gg=n>>8&255,b=n&255;function c(v){return Math.max(0,Math.min(255,Math.round(f>0?v+(255-v)*f:v*(1+f))))}return'rgb('+c(r)+','+c(gg)+','+c(b)+')'}
+  function tree(x,z){
+    var p=iso(x,z),s=a;
+    g.beginPath();g.ellipse(p[0],p[1],s*.7,s*.32,0,0,7);g.fillStyle='rgba(0,0,0,.2)';g.fill();
+    g.fillStyle='#7a4f2c';g.fillRect(p[0]-s*.12,p[1]-s*1.1,s*.24,s*1.1);
+    [[0,-1.9,.95,'#2f8f3a'],[-.35,-1.6,.6,'#3aa245'],[.35,-1.55,.62,'#2a8034'],[0,-2.35,.6,'#46b552']].forEach(function(q){
+      g.beginPath();g.arc(p[0]+q[0]*s,p[1]+q[1]*s,q[2]*s,0,7);g.fillStyle=q[3];g.fill()});
+  }
+  function pawn(e,i){
+    var p=iso(e.x,e.z),r=a*.52,h=a*1.6,col=i===0?'#19c3c9':'#d11fd1',bob=Math.abs(Math.sin(t*9+i))*a*.06;
+    var frozen=i===it&&t<freezeUntil;
+    g.beginPath();g.ellipse(p[0],p[1],r*1.15,r*.55,0,0,7);g.fillStyle='rgba(0,0,0,.25)';g.fill();
+    var y0=p[1]-bob;
+    var gr=g.createLinearGradient(p[0]-r,0,p[0]+r,0);gr.addColorStop(0,shade(col,.35));gr.addColorStop(.55,col);gr.addColorStop(1,shade(col,-.35));
+    g.beginPath();if(g.roundRect)g.roundRect(p[0]-r,y0-h,2*r,h,r);else g.rect(p[0]-r,y0-h,2*r,h);g.fillStyle=gr;g.fill();
+    // face: only when looking towards the camera
+    var sx=e.vx-e.vz,sy=(e.vx+e.vz)*.5,l=Math.hypot(sx,sy)||1;sx/=l;sy/=l;
+    if(sy>-.35){
+      var ex=p[0]+sx*r*.35,ey=y0-h*.68;
+      [-1,1].forEach(function(k){var x=ex+k*r*.36;g.beginPath();g.arc(x,ey,r*.27,0,7);g.fillStyle='#fff';g.fill();
+        g.beginPath();g.arc(x+sx*r*.1,ey+sy*r*.06,r*.13,0,7);g.fillStyle='#111';g.fill()});
+    }
+    if(frozen){g.beginPath();g.ellipse(p[0],y0-h*.5,r*1.6,h*.62,0,0,7);g.strokeStyle='rgba(190,240,255,.9)';g.lineWidth=2;g.stroke()}
+    if(i===it){
+      var by=y0-h-a*.55-Math.abs(Math.sin(t*5))*a*.25,br=a*.24;
+      var rg=g.createRadialGradient(p[0]-br*.3,by-br*.3,br*.1,p[0],by,br);rg.addColorStop(0,'#ffb0b0');rg.addColorStop(.6,'#e0383a');rg.addColorStop(1,'#8a1414');
+      g.save();g.shadowColor='rgba(255,60,60,.8)';g.shadowBlur=14;g.beginPath();g.arc(p[0],by,br,0,7);g.fillStyle=rg;g.fill();g.restore();
+    }
+    if(i===0){
+      g.font='800 '+Math.max(11,a*.5)+'px Nunito,sans-serif';g.textAlign='center';
+      var ty=y0-h-(i===it?a*1.2:a*.35);g.lineWidth=4;g.strokeStyle='rgba(0,0,0,.55)';g.strokeText('YOU',p[0],ty);g.fillStyle='#fff';g.fillText('YOU',p[0],ty);
+    }
+  }
+  function draw(){
+    g.clearRect(0,0,W,H);
+    arena();
+    var items=[];
+    trees.forEach(function(q){items.push({d:q[0]+q[1],f:function(){tree(q[0],q[1])}})});
+    E.forEach(function(e,i){items.push({d:e.x+e.z,f:function(){pawn(e,i)}})});
+    items.sort(function(p,q){return p.d-q.d}).forEach(function(o){o.f()});
+    parts=parts.filter(function(p){var k=t-p.t;if(k>.9)return false;g.globalAlpha=1-k/.9;g.fillStyle=p.c;g.beginPath();g.arc(p.x+p.vx*k,p.y+p.vy*k+200*k*k,Math.max(1,a*.12),0,7);g.fill();g.globalAlpha=1;return true});
+    pops=pops.filter(function(p){
+      var k=t-p.t;if(k>1.8)return false;var q=iso(p.x,p.z),y=q[1]-a*2.4-k*a*.8;
+      g.globalAlpha=Math.min(1,(1.8-k)/.4);g.font='800 '+Math.max(13,a*.62)+'px "Baloo 2",sans-serif';g.textAlign='center';
+      var w=g.measureText(p.s).width+24,hh=Math.max(26,a*1.1);
+      g.fillStyle=p.c;g.beginPath();if(g.roundRect)g.roundRect(q[0]-w/2,y-hh*.75,w,hh,hh/2);else g.rect(q[0]-w/2,y-hh*.75,w,hh);g.fill();
+      g.fillStyle='#fff';g.fillText(p.s,q[0],y+hh*.05);g.globalAlpha=1;return true});
+  }
+  var prev=0,visible=true;
+  function loop(ts){
+    var dt=Math.min(.05,(ts-prev)/1000||0);prev=ts;
+    if(visible&&!document.hidden){step(dt);draw()}
+    requestAnimationFrame(loop);
+  }
+  function onPtr(e){
+    var r=cv.getBoundingClientRect(),w=unIso(e.clientX-r.left,e.clientY-r.top);
+    if(Math.abs(w.x)<HALF+.5&&Math.abs(w.z)<HALF+.5){ptr={x:Math.max(-LIM,Math.min(LIM,w.x)),z:Math.max(-LIM,Math.min(LIM,w.z))};ptrAt=t}
+  }
+  cv.addEventListener('pointermove',onPtr);cv.addEventListener('pointerdown',onPtr);
+  window.addEventListener('resize',function(){resize();draw()});
+  if('IntersectionObserver' in window)new IntersectionObserver(function(en){visible=en[0].isIntersecting}).observe(cv);
+  resize();
+  for(var i=0;i<40;i++)step(1/30);   // settle into a natural pose for the first frame
+  draw();
+  if(!reduce)requestAnimationFrame(function(ts){prev=ts;loop(ts)});
 })();
 </script>
 </body>
