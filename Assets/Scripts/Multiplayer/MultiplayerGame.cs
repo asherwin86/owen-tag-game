@@ -10,6 +10,7 @@ using UnityEngine.UI;
 using TagGame.Gameplay;
 using TagGame.UI;
 using TagGame.Maps;
+using TagGame.Spectate;
 
 namespace TagGame.Multiplayer
 {
@@ -73,7 +74,7 @@ namespace TagGame.Multiplayer
         private readonly Dictionary<int, GameObject> _markers = new Dictionary<int, GameObject>();
         private Image[] _voteBg = new Image[MapManager.Count];
         private TMP_Text[] _voteText = new TMP_Text[MapManager.Count];
-        private TMP_Text _roleText;
+        private TMP_Text _roleText, _specLabel;
 
         // UI
         private GameObject _canvasGo, _menuPanel, _roomPanel, _hud, _resultsPanel, _tagButton, _startRoundButton, _customUrlRow;
@@ -134,6 +135,7 @@ namespace TagGame.Multiplayer
             _statusText.text = "";
             _nameInput.text = PlayerPrefs.GetString(PrefName, "");
             UpdateServerToggle();
+            if (_specLabel != null) _specLabel.text = SpectateSettings.Label;
             StartConnect(); // connect early so a sleeping free server has time to wake up
         }
 
@@ -199,6 +201,13 @@ namespace TagGame.Multiplayer
             _pending = o;
             _statusText.text = "Connecting...";
             if (GameSocket.State == GameSocket.Closed) StartConnect();
+        }
+
+        private void ToggleSpectate()
+        {
+            SpectateSettings.Allow = !SpectateSettings.Allow;
+            _specLabel.text = SpectateSettings.Label;
+            GameSocket.Send("{\"t\":\"spectate\",\"on\":" + (SpectateSettings.Allow ? "true" : "false") + "}");
         }
 
         private void MenuBack()
@@ -337,6 +346,7 @@ namespace TagGame.Multiplayer
                 case "joined":
                     _myId = m.id;
                     _mode = Mode.Room;
+                    GameSocket.Send("{\"t\":\"spectate\",\"on\":" + (SpectateSettings.Allow ? "true" : "false") + "}");
                     _menuPanel.SetActive(false);
                     _roomPanel.SetActive(true);
                     _scores = new PInfo[0];
@@ -633,6 +643,8 @@ namespace TagGame.Multiplayer
             _urlInput = MakeInput(_customUrlRow.transform, "ws://192.168.1.5:8080", C, new Vector2(0, -210), new Vector2(520, 48), 80, false);
             _statusText = MakeText(mp, "", 24, C, new Vector2(0, -275), new Vector2(1000, 60));
             MakeButton(mp, "Back", C, new Vector2(0, -330), new Vector2(220, 50), new Color(0.5f, 0.2f, 0.2f), MenuBack, 26);
+            var specBtn = MakeButton(mp, SpectateSettings.Label, C, new Vector2(0, -395), new Vector2(420, 44), new Color(0.25f, 0.25f, 0.3f, 0.95f), ToggleSpectate, 22);
+            _specLabel = specBtn.GetComponentInChildren<TMP_Text>();
             _menuPanel.SetActive(false);
 
             // --- room (right side, so you can still run around the lobby circle)
