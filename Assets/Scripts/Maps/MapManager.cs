@@ -174,7 +174,8 @@ namespace TagGame.Maps
             var mr = go.AddComponent<MeshRenderer>();
             Material top = roof != null ? roof : Tint(c * 0.9f);
             mr.sharedMaterials = new[] { wall != null ? wall : Tint(c), top };
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            // tall things (buildings, walls, trees) cast real shadows; small clutter doesn't, to keep the web build fast
+            mr.shadowCastingMode = h >= 2.5f ? UnityEngine.Rendering.ShadowCastingMode.On : UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
             if (solid)
             {
@@ -210,7 +211,7 @@ namespace TagGame.Maps
             var mr = go.AddComponent<MeshRenderer>();
             var m = Tint(c, 0.02f);
             mr.sharedMaterials = new[] { m, m };
-            mr.receiveShadows = false;
+            mr.receiveShadows = true;
             var bc = go.AddComponent<BoxCollider>();
             bc.center = new Vector3(0f, 0.5f, 0f);
             bc.size = new Vector3(size, 1f, size);

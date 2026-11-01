@@ -280,6 +280,7 @@ namespace TagGame.Spectate
             go.transform.position = new Vector3(p.x, _baseY, p.z);
             PlayerFace.Attach(go, p.n, baseMat);
             var r = new Rem { t = go.transform, target = go.transform.position, yaw = p.ry * Mathf.Rad2Deg, name = p.n };
+            TagGame.Juice.MapBlips.Register(go.transform, c);
             _remotes[p.id] = r;
             return r;
         }
@@ -313,6 +314,7 @@ namespace TagGame.Spectate
                     _marker.transform.localScale = Vector3.one * 0.6f;
                 }
                 _marker.SetActive(true);
+                TagGame.Juice.MapBlips.It = it.t;
                 _marker.transform.position = it.t.position + Vector3.up * (2.3f + Mathf.Sin(Time.time * 5f) * 0.12f);
             }
             else if (_marker != null) _marker.SetActive(false);

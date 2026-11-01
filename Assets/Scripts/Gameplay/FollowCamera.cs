@@ -20,6 +20,16 @@ namespace TagGame.Gameplay
         [SerializeField] private float turnSensitivity = 0.25f;
 
         private float _yaw, _pitchDelta, _zoom = 1f;
+        private Camera _camera;
+        private float _baseFov = -1f, _shake;
+        private PlayerController _pc;
+        private Transform _pcFor;
+        private static FollowCamera _main;
+
+        /// <summary>Shake the camera a little (tags, getting tagged).</summary>
+        public static void Shake(float amount) { if (_main != null) _main._shake = Mathf.Max(_main._shake, amount); }
+
+        private void Awake() { _main = this; _camera = GetComponent<Camera>(); if (_camera != null) _baseFov = _camera.fieldOfView; }
         private readonly List<int> _camTouches = new List<int>();
         private float _lastPinch;
 
@@ -46,6 +56,19 @@ namespace TagGame.Gameplay
             Vector3 desiredPosition = target.position + dir * dist;
             transform.position = Vector3.Lerp(transform.position, desiredPosition, followSpeed * Time.deltaTime);
             transform.LookAt(target.position + Vector3.up * lookAtHeightOffset);
+
+            // speed feel: widen the view when sprinting or dashing, and shake on hits
+            if (_pcFor != target) { _pcFor = target; _pc = target.GetComponent<PlayerController>(); }
+            if (_camera != null && _baseFov > 0f)
+            {
+                float want = _baseFov + (_pc != null && _pc.isActiveAndEnabled ? (_pc.IsDashing ? 12f : (_pc.IsSprinting ? 6f : 0f)) : 0f);
+                _camera.fieldOfView = Mathf.Lerp(_camera.fieldOfView, want, 1f - Mathf.Exp(-8f * Time.deltaTime));
+            }
+            if (_shake > 0.001f)
+            {
+                transform.position += Random.insideUnitSphere * _shake;
+                _shake = Mathf.MoveTowards(_shake, 0f, Time.deltaTime * 1.2f);
+            }
         }
 
         private void ReadInput()

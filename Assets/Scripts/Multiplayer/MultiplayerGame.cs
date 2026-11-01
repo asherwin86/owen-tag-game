@@ -374,6 +374,13 @@ namespace TagGame.Multiplayer
                 case "tagged":
                     _scores = m.scores ?? _scores;
                     _itId = m.it;
+                    TagGame.Juice.GameAudio.Play("tag", 1f, UnityEngine.Random.Range(0.95f, 1.1f));
+                    {
+                        Transform vt = m.target == _myId ? _player.transform : (_remotes.TryGetValue(m.target, out var vr) ? vr.t : null);
+                        if (vt != null) TagGame.Juice.Fx.Burst(vt.position, m.target == _myId ? ColorOf(0) : new Color(1f, 0.6f, 0.15f));
+                    }
+                    if (m.target == _myId) { TagGame.Juice.GameAudio.Play("it", 0.8f); FollowCamera.Shake(0.35f); }
+                    else if (m.by == _myId) FollowCamera.Shake(0.15f);
                     if (m.by == _myId)
                     {
                         Feed("You tagged " + m.targetName + "!", 2f);
@@ -430,11 +437,13 @@ namespace TagGame.Multiplayer
                     _player.TeleportTo(pos, look);
                 }
             }
+            TagGame.Juice.GameAudio.Play("whistle");
             Feed(_itId == _myId ? "You are IT! Chase someone and press TAG (E / Space)" : "Run! Only the IT player can tag. Stay untagged to score.", 4f);
         }
 
         private void EndRound(Msg m)
         {
+            TagGame.Juice.GameAudio.Play("buzzer");
             _mode = Mode.Room;
             _phase = "lobby";
             ClearRemotes();
@@ -493,6 +502,7 @@ namespace TagGame.Multiplayer
             go.transform.position = new Vector3(p.x, _baseY, p.z);
             PlayerFace.Attach(go, nm, baseMat);
             var r = new Remote { t = go.transform, target = go.transform.position, yaw = p.ry * Mathf.Rad2Deg, name = nm };
+            TagGame.Juice.MapBlips.Register(go.transform, ColorOf(ci));
             _remotes[p.id] = r;
             return r;
         }
@@ -608,6 +618,7 @@ namespace TagGame.Multiplayer
             }
             if (parent == null) { mk.SetActive(false); return; }
             mk.SetActive(on);
+            if (on) TagGame.Juice.MapBlips.It = parent;
             mk.transform.position = parent.position + Vector3.up * 2.2f + Vector3.up * Mathf.Sin(Time.time * 5f) * 0.12f;
         }
 
