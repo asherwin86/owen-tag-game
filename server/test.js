@@ -37,6 +37,7 @@ server.listen(0, async () => {
     await b.wait('room');
     // votes: both vote City, it must win
     a.send({ t: 'vote', map: 2 }); b.send({ t: 'vote', map: 2 });
+    a.send({ t: 'bots', mode: 'off' });   // this test is about the two people only
     await sleep(100);
     b.send({ t: 'start' }); await sleep(100);
     assert(!a.msgs.find(m => m.t === 'start'), 'non-host must not start');
@@ -90,14 +91,14 @@ server.listen(0, async () => {
     w.send({ t: 'list' });
     const l1 = await w.wait('list');
     const pub = l1.items.find(i => i.kind === 'room');
-    assert(pub && pub.players === 2, 'public game listed with 2 players');
+    assert(pub && pub.players === 4, 'public game listed with 2 players + 2 auto bots');
     w.send({ t: 'watch', key: pub.key });
     const v1 = await w.wait('view');
-    assert.strictEqual(v1.players.length, 2); assert.strictEqual(v1.hidden, 0);
+    assert.strictEqual(v1.players.length, 4); assert.strictEqual(v1.hidden, 0);
     c.send({ t: 'spectate', on: false }); await sleep(300);
     w.msgs.length = 0;
     const v2 = await w.wait('view');
-    assert.strictEqual(v2.players.length, 1, 'opted-out player is hidden'); assert.strictEqual(v2.hidden, 1);
+    assert.strictEqual(v2.players.length, 3, 'opted-out player is hidden'); assert.strictEqual(v2.hidden, 1);
     const pr = client(port); await pr.open();
     pr.send({ t: 'pstate', name: 'Owen', map: 1, it: 2, left: 80, e: [{ n: 'You', x: 1, z: 2, ry: 0, s: 5, p: true }, { n: 'Tiger 1', x: 9999, z: -4, ry: 1, s: 3 }, { n: 'Tiger 2', x: 3, z: 3, ry: 2, s: 0 }] });
     await sleep(200);
@@ -112,6 +113,27 @@ server.listen(0, async () => {
     pr.send({ t: 'pend' }); await sleep(250);
     const v4 = await w.wait('viewend');
     console.log('spectate ok');
+    // bots: one person + bots 'on' plays in a private room; bots move and tag each other
+    const solo = client(port); await solo.open();
+    solo.send({ t: 'create', name: 'Solo' }); const js = await solo.wait('joined'); await solo.wait('room');
+    solo.send({ t: 'bots', mode: 'off' }); await solo.wait('room');
+    solo.send({ t: 'start' }); const e1 = await solo.wait('err'); assert(/bots/.test(e1.msg), 'needs bots or a friend');
+    solo.msgs.length = 0; solo.send({ t: 'bots', mode: 'on' }); const rb = await solo.wait('room'); assert.strictEqual(rb.bots, 'on');
+    solo.send({ t: 'vote', map: 0 }); await sleep(100);
+    solo.send({ t: 'start' });
+    const sb = await solo.wait('start');
+    assert.strictEqual(sb.spawns.length, 6, '1 person + 5 bots');
+    solo.msgs.length = 0;
+    const s1 = await solo.wait('snap'); await sleep(1500); solo.msgs.length = 0; const s2 = await solo.wait('snap');
+    const moved = s2.players.filter(q => q.id !== js.id && s1.players.find(o => o.id === q.id && Math.hypot(o.x - q.x, o.z - q.z) > 0.3)).length;
+    assert(moved >= 1, 'bots move');
+    // stay out of the way so the bots tag each other
+    solo.send({ t: 'state', x: 13, z: 13, ry: 0 });
+    const tg = await solo.wait('tagged', 25000);
+    assert(tg.byName.startsWith('Bot') || tg.targetName.startsWith('Bot'), 'a bot was involved in the tag');
+    // a grid upload is accepted quietly
+    const bits = Buffer.alloc(Math.ceil(20 * 20 / 8)); solo.send({ t: 'grid', map: 1, n: 20, half: 10, cell: 1, data: bits.toString('base64') });
+    console.log('bots ok');
     console.log('ALL TESTS PASSED');
     process.exit(0);
   } catch (e) { console.error('FAIL', e); process.exit(1); }

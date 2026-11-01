@@ -28,12 +28,12 @@ namespace TagGame.Multiplayer
         private const string PrefServerMode = "TagGame.MpServerMode"; // 0 official, 1 my own
         private const string PrefCustomUrl = "TagGame.MpCustomUrl";
 
-        [Serializable] private class PInfo { public int id; public string name; public int score, wins, color, vote; public float x, z, ry; }
+        [Serializable] private class PInfo { public int id; public string name; public int score, wins, color, vote; public bool bot; public float x, z, ry; }
         [Serializable] private class Spawn { public int id; public float x, z; }
         [Serializable]
         private class Msg
         {
-            public string t, code, phase, msg, byName, targetName;
+            public string t, code, phase, msg, byName, targetName, bots;
             public int id, hostId, by, target, it, map;
             public bool isPublic;
             public float duration, left, next, stunMs;
@@ -74,7 +74,9 @@ namespace TagGame.Multiplayer
         private readonly Dictionary<int, GameObject> _markers = new Dictionary<int, GameObject>();
         private Image[] _voteBg = new Image[MapManager.Count];
         private TMP_Text[] _voteText = new TMP_Text[MapManager.Count];
-        private TMP_Text _roleText, _specLabel;
+        private TMP_Text _roleText, _specLabel, _botsLabel;
+        private Button _botsButton;
+        private string _botsMode = "auto";
 
         // UI
         private GameObject _canvasGo, _menuPanel, _roomPanel, _hud, _resultsPanel, _tagButton, _startRoundButton, _customUrlRow;
@@ -362,6 +364,7 @@ namespace TagGame.Multiplayer
                     _phase = m.phase;
                     _roomIsPublic = m.isPublic;
                     _roster = m.players ?? new PInfo[0];
+                    if (!string.IsNullOrEmpty(m.bots)) _botsMode = m.bots;
                     foreach (var rp0 in _roster) if (rp0.id == _myId) _myVote = rp0.vote;
                     if (_mode == Mode.Room || _mode == Mode.Playing) RefreshRoomPanel();
                     break;
@@ -398,6 +401,9 @@ namespace TagGame.Multiplayer
                         Feed(m.byName + " tagged " + m.targetName, 2f);
                         TagPopup.Show(m.byName + " tagged " + m.targetName + "!", new Color(0.95f, 0.65f, 0.15f));
                     }
+                    break;
+                case "needgrid":
+                    SendGrid(m.map);
                     break;
                 case "miss":
                     Feed("Missed - face someone and get close!", 1f);
@@ -546,6 +552,45 @@ namespace TagGame.Multiplayer
             _startRoundButton.SetActive(iAmHost);
             _waitText.gameObject.SetActive(!iAmHost);
             RefreshVotes();
+            RefreshBots();
+        }
+
+        private void RefreshBots()
+        {
+            if (_botsLabel == null) return;
+            bool host = _myId == _hostId && !_roomIsPublic;
+            string what = _botsMode == "on" ? "On" : (_botsMode == "off" ? "Off" : "Auto (when few players)");
+            _botsLabel.text = "Bots: " + what + (host ? "  (tap to change)" : "");
+            _botsButton.interactable = host;
+        }
+
+        private void CycleBots()
+        {
+            if (_myId != _hostId || _roomIsPublic) return;
+            string next = _botsMode == "off" ? "auto" : (_botsMode == "auto" ? "on" : "off");
+            _botsMode = next;
+            GameSocket.Send("{\"t\":\"bots\",\"mode\":\"" + next + "\"}");
+            RefreshBots();
+        }
+
+        /// <summary>The server asks one player for a map's walk grid so its bots can find their way around walls.</summary>
+        private void SendGrid(int map)
+        {
+            if (MapManager.I == null) return;
+            if (MapManager.I.Current != map) MapManager.I.Load(map);
+            var g = MapManager.I.Grid;
+            if (g == null) return;
+            int n = g.N;
+            var bytes = new byte[(n * n + 7) / 8];
+            for (int z = 0; z < n; z++)
+                for (int x = 0; x < n; x++)
+                {
+                    float wx = -g.Half + (x + 0.5f) * g.Cell, wz = -g.Half + (z + 0.5f) * g.Cell;
+                    if (g.IsBlocked(wx, wz)) { int i = z * n + x; bytes[i >> 3] |= (byte)(1 << (i & 7)); }
+                }
+            var inv = CultureInfo.InvariantCulture;
+            GameSocket.Send("{\"t\":\"grid\",\"map\":" + map + ",\"n\":" + n + ",\"half\":" + g.Half.ToString("F3", inv)
+                + ",\"cell\":" + g.Cell.ToString("F3", inv) + ",\"data\":\"" + Convert.ToBase64String(bytes) + "\"}");
         }
 
         private void RefreshVotes()
@@ -564,13 +609,13 @@ namespace TagGame.Multiplayer
             if (_mode == Mode.Room && _roomPanel.activeSelf && !_startRoundButton.activeSelf)
             {
                 if (_roomIsPublic)
-                    _waitText.text = _roster.Length < 2 ? "Waiting for another player..."
-                        : "Next round in " + Mathf.CeilToInt(_nextRoundIn) + "s";
+                    _waitText.text = _nextRoundIn > 0.05f ? "Next round in " + Mathf.CeilToInt(_nextRoundIn) + "s"
+                        : (_botsMode == "off" && _roster.Length < 2 ? "Waiting for another player..." : "Starting soon...");
                 else
                     _waitText.text = _roster.Length < 2 ? "Waiting for friends..." : "Waiting for the host to start...";
             }
             if (_mode == Mode.Room && _startRoundButton.activeSelf)
-                _startRoundButton.GetComponentInChildren<TMP_Text>().text = _roster.Length < 2 ? "Need 2+ players" : "START GAME";
+                _startRoundButton.GetComponentInChildren<TMP_Text>().text = _roster.Length < 2 && _botsMode == "off" ? "Need 2+ players" : "START GAME";
 
             if (_mode != Mode.Playing) return;
             int secs = Mathf.CeilToInt(_roundLeft);
@@ -702,12 +747,14 @@ namespace TagGame.Multiplayer
             for (int i = 0; i < MapManager.Count; i++)
             {
                 int mid = i;
-                var vb = MakeButton(rp, "", T, new Vector2((i - 1) * 132f, -600f), new Vector2(124, 82), new Color(0.2f, 0.2f, 0.28f, 0.95f),
+                var vb = MakeButton(rp, "", T, new Vector2((i - 1) * 132f, -598f), new Vector2(124, 70), new Color(0.2f, 0.2f, 0.28f, 0.95f),
                     () => { _myVote = mid; GameSocket.Send(Json(new Out { t = "vote", map = mid })); RefreshVotes(); }, 20);
                 _voteBg[i] = vb.GetComponent<Image>();
                 _voteText[i] = vb.GetComponentInChildren<TMP_Text>();
                 _voteText[i].text = MapManager.Names[i];
             }
+            _botsButton = MakeButton(rp, "Bots: Auto", T, new Vector2(0, -651f), new Vector2(390, 30), new Color(0.25f, 0.25f, 0.32f, 0.95f), CycleBots, 18);
+            _botsLabel = _botsButton.GetComponentInChildren<TMP_Text>();
             _startRoundButton = MakeButton(rp, "START GAME", T, new Vector2(0, -700), new Vector2(340, 56), new Color(0.15f, 0.6f, 0.3f),
                 () => GameSocket.Send("{\"t\":\"start\"}"), 32).gameObject;
             _waitText = MakeText(rp, "", 26, T, new Vector2(0, -700), new Vector2(380, 56));

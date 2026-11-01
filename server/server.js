@@ -66,7 +66,8 @@ function roomInfo(room) {
     hostId: room.hostId,
     phase: room.phase,
     isPublic: room.isPublic,
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: Math.floor(p.score), wins: p.wins, color: p.color, vote: p.vote })),
+    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, score: Math.floor(p.score), wins: p.wins, color: p.color, vote: p.vote, bot: !!p.bot })),
+    bots: room.bots || 'auto',
     map: room.map,
     it: room.itId || 0,
   };
@@ -79,7 +80,7 @@ function scoresOf(room) {
 function createRoom(host, isPublic) {
   const code = isPublic ? PUBLIC_CODE : makeCode();
   if (!code) return null;
-  const room = { code, isPublic: !!isPublic, hostId: isPublic ? 0 : host.id, phase: 'lobby', map: 0, itId: 0, lastTick: Date.now(), players: new Map(), endsAt: 0, nextStart: 0, timer: null, tick: null };
+  const room = { code, isPublic: !!isPublic, hostId: isPublic ? 0 : host.id, phase: 'lobby', map: 0, itId: 0, bots: 'auto', lastTick: Date.now(), players: new Map(), endsAt: 0, nextStart: 0, timer: null, tick: null };
   rooms.set(code, room);
   room.tick = setInterval(() => tickRoom(room), 1000 / TICK_HZ);
   return room;
@@ -121,17 +122,19 @@ function removePlayer(p) {
   if (!room) return;
   room.players.delete(p.id);
   p.room = null;
-  if (room.players.size === 0) {
+  if (humanCount(room) === 0) {
     clearInterval(room.tick);
     clearTimeout(room.timer);
     rooms.delete(room.code);
     return;
   }
-  if (!room.isPublic && room.hostId === p.id) room.hostId = room.players.keys().next().value; // host leaves -> next player hosts
+  if (!room.isPublic && room.hostId === p.id) room.hostId = [...room.players.values()].find(o => !o.bot).id; // host leaves -> next player hosts
   if (room.phase === 'playing' && room.itId === p.id) pickNewIt(room);
   broadcast(room, roomInfo(room));
   if (room.phase === 'playing' && room.players.size < 2) endRound(room);
 }
+
+function humanCount(room) { let n = 0; for (const p of room.players.values()) if (!p.bot) n++; return n; }
 
 function pickNewIt(room) {
   const ids = [...room.players.keys()];
@@ -142,6 +145,11 @@ function pickNewIt(room) {
 
 function startRound(room) {
   room.map = pickMap(room);
+  addBots(room);
+  if (room.map > 0 && !grids.has(room.map)) {
+    const h = [...room.players.values()].find(o => !o.bot);
+    if (h) send(h.ws, { t: 'needgrid', map: room.map });
+  }
   const seconds = MAP_ROUND_SECONDS[room.map];
   room.phase = 'playing';
   room.roundSeconds = seconds;
@@ -177,6 +185,7 @@ function endRound(room) {
   for (const w of winnerList) { const wp = room.players.get(w.id); if (wp) wp.wins++; }
   const winners = winnerList.map(s => s.name);
   broadcast(room, { t: 'end', scores, winners });
+  removeBots(room);
   broadcast(room, roomInfo(room));
 }
 
@@ -187,12 +196,14 @@ function tickRoom(room) {
   const dt = Math.min(0.5, (nowT - room.lastTick) / 1000);
   room.lastTick = nowT;
   if (room.phase === 'playing') {
+    updateBots(room, dt);
+    msg.players = [...room.players.values()].map(p => ({ id: p.id, x: +p.x.toFixed(2), z: +p.z.toFixed(2), ry: +(p.ry || 0).toFixed(3) }));
     msg.left = Math.max(0, (room.endsAt - nowT) / 1000);
     // Points are seconds spent NOT being "it".
     for (const p of room.players.values()) if (p.id !== room.itId) p.score += dt;
   }
   if (room.isPublic && room.phase === 'lobby') {
-    if (room.players.size >= 2) {
+    if (humanCount(room) >= (room.bots === 'off' ? 2 : 1)) {
       if (!room.nextStart) room.nextStart = Date.now() + PUBLIC_COUNTDOWN_MS;
       msg.next = Math.max(0, (room.nextStart - Date.now()) / 1000);
       if (Date.now() >= room.nextStart) { startRound(room); return; }
@@ -226,11 +237,157 @@ function handleTag(p) {
     if (dist < bestDist) { best = o; bestDist = dist; }
   }
   if (!best) { send(p.ws, { t: 'miss' }); return; }
+  doTag(room, p, best, now);
+}
 
+function doTag(room, p, best, now) {
   room.itId = best.id;
   best.stunUntil = now + STUN_MS;
   best.noTagId = p.id; best.noTagUntil = now + NO_TAG_BACK_MS;
+  if (best.bot) best.path = null;
   broadcast(room, { t: 'tagged', by: p.id, target: best.id, it: best.id, byName: p.name, targetName: best.name, stunMs: STUN_MS, scores: scoresOf(room) });
+}
+
+// ---------------------------------------------------------------- bots
+// Bots: off, auto (only when there aren't many people: fill up to 4 players, the default) or on (fill up to 6, always at least 2).
+// They play by the same rules: chase when IT, run from IT otherwise. On the big maps they find their way around
+// walls with a walk grid that the first player's game sends up once per map (same on every machine).
+const BOT_NAMES = ['Ava', 'Ben', 'Cy', 'Dot', 'Eli', 'Fin', 'Gus', 'Ivy'];
+const BOT_AUTO_FILL = 4;
+const BOT_LIMIT = [14, 72, 120];
+const BOT_MODES = ['off', 'auto', 'on'];
+const BOT_ON_FILL = 6;     // 'on': fill the room up to this many, always at least 2 bots
+const NOOP_WS = { readyState: 3, send() {}, ping() {}, terminate() {} };
+const grids = new Map(); // map id -> { n, half, cell, b: Uint8Array }
+
+function botWanted(room) {
+  const humans = humanCount(room);
+  const mode = room.bots || 'auto';
+  let want = mode === 'off' ? 0 : mode === 'auto' ? Math.max(0, BOT_AUTO_FILL - humans) : Math.max(2, BOT_ON_FILL - humans);
+  return Math.max(0, Math.min(want, MAX_PLAYERS - humans));
+}
+
+function addBots(room) {
+  removeBots(room);
+  const n = botWanted(room);
+  for (let i = 0; i < n; i++) {
+    const b = { id: nextId++, ws: NOOP_WS, name: 'Bot ' + BOT_NAMES[i % BOT_NAMES.length], room: null, bot: true, spectate: true };
+    addPlayer(room, b);
+    b.speed = 5.3 + Math.random() * 0.9;
+    b.path = null; b.pi = 0; b.pathAt = 0; b.wx = 0; b.wz = 0; b.wt = 0; b.dashUntil = 0; b.dashReady = 0;
+  }
+}
+
+function removeBots(room) { for (const p of [...room.players.values()]) if (p.bot) { room.players.delete(p.id); p.room = null; } }
+
+function gBlocked(g, x, z) {
+  const cx = Math.floor((x + g.half) / g.cell), cz = Math.floor((z + g.half) / g.cell);
+  if (cx < 0 || cz < 0 || cx >= g.n || cz >= g.n) return true;
+  return g.b[cz * g.n + cx] === 1;
+}
+
+function gLos(g, ax, az, bx, bz) {
+  const len = Math.hypot(bx - ax, bz - az), steps = Math.max(1, Math.ceil(len / (g.cell * 0.5)));
+  for (let i = 1; i < steps; i++) { const t = i / steps; if (gBlocked(g, ax + (bx - ax) * t, az + (bz - az) * t)) return false; }
+  return true;
+}
+
+function gPath(g, ax, az, bx, bz) {
+  const n = g.n, cell = g.cell, half = g.half;
+  const toC = w => Math.max(0, Math.min(n - 1, Math.floor((w + half) / cell)));
+  const s = toC(az) * n + toC(ax), goal = toC(bz) * n + toC(bx);
+  const gScore = new Float32Array(n * n).fill(Infinity), parent = new Int32Array(n * n).fill(-1), closed = new Uint8Array(n * n);
+  const heap = []; // [f, idx]
+  const push = (f, i) => { heap.push([f, i]); let k = heap.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m; } } return top; };
+  const h = i => { const dx = Math.abs((i % n) - (goal % n)), dz = Math.abs(Math.floor(i / n) - Math.floor(goal / n)); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+  gScore[s] = 0; push(h(s), s);
+  let iter = 0;
+  while (heap.length && iter++ < 30000) {
+    const [, cur] = pop();
+    if (cur === goal) break;
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    const cx = cur % n, cz = Math.floor(cur / n);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dz) continue;
+      const nx = cx + dx, nz = cz + dz;
+      if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
+      const ni = nz * n + nx;
+      if (g.b[ni] && ni !== goal) continue;
+      if (dx && dz && (g.b[cz * n + nx] || g.b[nz * n + cx])) continue; // no corner cutting
+      const ng = gScore[cur] + (dx && dz ? 1.414 : 1);
+      if (ng < gScore[ni]) { gScore[ni] = ng; parent[ni] = cur; push(ng + h(ni), ni); }
+    }
+  }
+  if (parent[goal] === -1 && goal !== s) return null;
+  const pts = [];
+  for (let i = goal; i !== -1 && i !== s; i = parent[i]) pts.push([-half + (i % n + 0.5) * cell, -half + (Math.floor(i / n) + 0.5) * cell]);
+  pts.reverse();
+  return pts.length ? pts : null;
+}
+
+function steerTo(b, tx, tz, g, now) {
+  if (!g || gLos(g, b.x, b.z, tx, tz)) { b.path = null; return [tx, tz]; }
+  if (!b.path || now >= b.pathAt) { b.path = gPath(g, b.x, b.z, tx, tz); b.pi = 0; b.pathAt = now + 600 + Math.random() * 300; }
+  if (!b.path) return [tx, tz];
+  while (b.pi < b.path.length - 1 && Math.hypot(b.path[b.pi][0] - b.x, b.path[b.pi][1] - b.z) < 0.9) b.pi++;
+  return b.path[b.pi];
+}
+
+function freeAt(g, lim, x, z) { return Math.abs(x) < lim && Math.abs(z) < lim && (!g || !gBlocked(g, x, z)); }
+
+function updateBots(room, dt) {
+  const now = Date.now();
+  const g = room.map > 0 ? grids.get(room.map) : null;
+  const lim = BOT_LIMIT[room.map] || 14;
+  const all = [...room.players.values()];
+  const it = room.players.get(room.itId);
+  for (const b of all) {
+    if (!b.bot || now < b.stunUntil) continue;
+    let target, speed;
+    if (b.id === room.itId) {
+      let best = null, bd = Infinity;
+      for (const o of all) {
+        if (o === b || (b.noTagId === o.id && now < b.noTagUntil)) continue;
+        const d = Math.hypot(o.x - b.x, o.z - b.z);
+        if (d < bd) { bd = d; best = o; }
+      }
+      if (!best) continue;
+      if (bd < 1.3) { doTag(room, b, best, now); continue; }
+      target = steerTo(b, best.x, best.z, g, now);
+      speed = b.speed * 1.08;
+      if (bd < 5 && now > b.dashReady && Math.random() < 0.04) { b.dashUntil = now + 220; b.dashReady = now + 3000 + Math.random() * 3000; }
+    } else if (it && Math.hypot(b.x - it.x, b.z - it.z) < 18) {
+      const ax = b.x - it.x, az = b.z - it.z, l = Math.hypot(ax, az) || 1;
+      let dir = [-az / l, ax / l];
+      for (const deg of [0, 40, -40, 80, -80, 120, -120, 160]) {
+        const r = deg * Math.PI / 180, dx = (ax / l) * Math.cos(r) - (az / l) * Math.sin(r), dz = (ax / l) * Math.sin(r) + (az / l) * Math.cos(r);
+        if (freeAt(g, lim - 1, b.x + dx * 1.5, b.z + dz * 1.5) && freeAt(g, lim - 1, b.x + dx * 3, b.z + dz * 3)) { dir = [dx, dz]; break; }
+      }
+      target = [b.x + dir[0] * 3, b.z + dir[1] * 3];
+      speed = b.speed * 0.92;
+      if (l < 4 && now > b.dashReady && Math.random() < 0.04) { b.dashUntil = now + 220; b.dashReady = now + 3000 + Math.random() * 3000; }
+    } else {
+      if (now > b.wt || Math.hypot(b.wx - b.x, b.wz - b.z) < 1.5) {
+        for (let k = 0; k < 20; k++) { const x = (Math.random() * 2 - 1) * (lim - 2), z = (Math.random() * 2 - 1) * (lim - 2); if (freeAt(g, lim, x, z)) { b.wx = x; b.wz = z; break; } }
+        b.wt = now + 3000 + Math.random() * 3000;
+      }
+      target = steerTo(b, b.wx, b.wz, g, now);
+      speed = 2.6;
+    }
+    if (now < b.dashUntil) speed *= 2.2;
+    let dx = target[0] - b.x, dz = target[1] - b.z;
+    const l = Math.hypot(dx, dz);
+    if (l < 0.01) continue;
+    dx /= l; dz /= l;
+    const step = Math.min(l, speed * dt);
+    let nx = b.x + dx * step, nz = b.z + dz * step;
+    if (g && gBlocked(g, nx, nz)) {
+      if (!gBlocked(g, nx, b.z)) nz = b.z; else if (!gBlocked(g, b.x, nz)) nx = b.x; else { nx = b.x; nz = b.z; b.path = null; }
+    }
+    b.x = Math.max(-lim, Math.min(lim, nx)); b.z = Math.max(-lim, Math.min(lim, nz)); b.ry = Math.atan2(dx, dz);
+  }
 }
 
 // ---------------------------------------------------------------- spectating
@@ -369,6 +526,28 @@ wss.on('connection', (ws) => {
       }
       case 'unwatch': p.watch = null; break;
       case 'tag': handleTag(p); break;
+      case 'bots': {
+        const room = p.room;
+        if (!room || room.isPublic || room.hostId !== p.id || room.phase !== 'lobby') return;
+        const mode = String(m.mode || '');
+        if (!BOT_MODES.includes(mode)) return;
+        room.bots = mode;
+        broadcast(room, roomInfo(room));
+        break;
+      }
+      case 'grid': {
+        // walk grid for a big map, sent once by a player's game (identical on every machine)
+        const map = Number(m.map), n = Number(m.n), half = Number(m.half), cell = Number(m.cell);
+        if (!(map >= 1 && map < MAP_COUNT) || grids.has(map)) break;
+        if (!Number.isInteger(n) || n < 10 || n > 400 || !(half > 5 && half < 300) || !(cell > 0.2 && cell < 5)) break;
+        let bytes;
+        try { bytes = Buffer.from(String(m.data || ''), 'base64'); } catch { break; }
+        if (bytes.length !== Math.ceil(n * n / 8)) break;
+        const b = new Uint8Array(n * n);
+        for (let i = 0; i < n * n; i++) b[i] = (bytes[i >> 3] >> (i & 7)) & 1;
+        grids.set(map, { n, half, cell, b });
+        break;
+      }
       case 'vote': {
         const room = p.room;
         if (!room || room.phase !== 'lobby') return;
@@ -380,7 +559,7 @@ wss.on('connection', (ws) => {
       case 'start': {
         const room = p.room;
         if (!room || room.isPublic || room.hostId !== p.id || room.phase !== 'lobby') return;
-        if (room.players.size < 2) { send(ws, { t: 'err', msg: 'Need at least 2 players to start.' }); return; }
+        if (room.players.size + botWanted(room) < 2) { send(ws, { t: 'err', msg: 'Need at least 2 players to start (or turn bots on).' }); return; }
         startRound(room);
         break;
       }
