@@ -174,7 +174,7 @@ td{color:#c2cec7}
 tr:last-child td{border-bottom:0}
 kbd{font-family:var(--body);font-weight:700;font-size:13px;background:var(--bg);border:1px solid var(--line2);border-bottom-width:3px;border-radius:6px;padding:1px 7px;color:var(--ink)}
 
-.news{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.news{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
 .post{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:26px;min-width:0}
 .post time{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--play);font-weight:700}
 .post h3{margin:8px 0 10px;font-size:30px}
@@ -339,6 +339,7 @@ kbd{font-family:var(--body);font-weight:700;font-size:13px;background:var(--bg);
         <p class="kicker">Practice</p>
         <h3>Up to fourteen tigers, and they tag each other too.</h3>
         <p>Practice drops you into a timed round with a pack of tiger bots. They chase around walls and through doors, and they pass the tag between themselves, so any of them can end up IT.</p>
+        <p>Grab the glowing speed gems for a burst of pace, and dash to slip past a tiger at the last second.</p>
       </div>
     </div>
   </section>
@@ -456,11 +457,11 @@ kbd{font-family:var(--body);font-weight:700;font-size:13px;background:var(--bg);
     <div class="sec-head"><p class="kicker">Controls</p><h2>Movement follows the camera</h2></div>
     <div class="table-scroll">
       <table>
-        <thead><tr><th></th><th>Move</th><th>Sprint</th><th>Camera</th></tr></thead>
+        <thead><tr><th></th><th>Move</th><th>Sprint</th><th>Dash</th><th>Camera</th></tr></thead>
         <tbody>
-          <tr><td><b>Keyboard and mouse</b></td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</td><td><kbd>Shift</kbd></td><td>Hold right mouse and drag. Scroll to zoom. Middle click or <kbd>Home</kbd> resets.</td></tr>
-          <tr><td><b>Touch</b></td><td>On-screen joystick</td><td>Sprint button</td><td>Drag an empty part of the screen. Pinch to zoom.</td></tr>
-          <tr><td><b>Controller</b></td><td>Left stick</td><td>Sprint button</td><td>Right stick. Triggers zoom. Click the right stick to reset.</td></tr>
+          <tr><td><b>Keyboard and mouse</b></td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</td><td><kbd>Shift</kbd></td><td><kbd>Ctrl</kbd> or <kbd>Q</kbd></td><td>Hold right mouse and drag. Scroll to zoom. Middle click or <kbd>Home</kbd> resets.</td></tr>
+          <tr><td><b>Touch</b></td><td>On-screen joystick</td><td>RUN button</td><td>DASH button</td><td>Drag an empty part of the screen. Pinch to zoom.</td></tr>
+          <tr><td><b>Controller</b></td><td>Left stick</td><td>Left bumper</td><td>X (left face button)</td><td>Right stick. Triggers zoom. Click the right stick to reset.</td></tr>
         </tbody>
       </table>
     </div>
@@ -469,6 +470,8 @@ kbd{font-family:var(--body);font-weight:700;font-size:13px;background:var(--bg);
   <section id="news" class="sec">
     <div class="sec-head"><p class="kicker">News</p><h2>Patch notes</h2></div>
     <div class="news">
+      <article class="post"><time>November 2026</time><h3>Game feel</h3>
+        <ul><li>3-2-1-GO countdown, beeps for the last 10 seconds and a final buzzer.</li><li>Sound effects for tags, being IT, dashing, pickups and footsteps.</li><li>Dash: a quick burst of speed every 2.5 seconds. The tigers dash too.</li><li>Speed gems on every map: 5 seconds of extra speed and unlimited sprint.</li><li>Minimap on School and City, plus sprint and dash bars.</li><li>Shadows, distance fog, richer colours and a camera that kicks when you sprint.</li></ul></article>
       <article class="post"><time>November 2026</time><h3>Spectate</h3>
         <ul><li>Watch any public game or Practice round live, in 3D in the game or from above on this site.</li><li>Follow any player, or fly around with a free camera.</li><li>Allow spectators switch for Practice and Multiplayer, on unless you turn it off.</li><li>The game now plays right on this website.</li></ul></article>
       <article class="post"><time>October 2026</time><h3>The big update</h3>
