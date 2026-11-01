@@ -316,6 +316,8 @@ namespace TagGame.Multiplayer
             if (_mode != Mode.Playing) return;
             var kb = Keyboard.current;
             if (kb != null && (kb.eKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame)) PressTag();
+            var pad = Gamepad.current;
+            if (pad != null && pad.buttonSouth.wasPressedThisFrame) PressTag();
         }
 
         private void PressTag()
