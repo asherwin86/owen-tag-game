@@ -107,6 +107,10 @@ namespace TagGame.Multiplayer
             _baseY = _player.transform.position.y;
             PlayerFace.Attach(_player.gameObject, null, _playerMaterial); // you have a face now
 
+            // The official server moved to a new address; fix any old address a player saved.
+            string saved = PlayerPrefs.GetString(PrefCustomUrl, "");
+            if (saved.Contains("tag-game-server-zsyy")) { PlayerPrefs.SetString(PrefCustomUrl, OfficialServerUrl); PlayerPrefs.Save(); }
+
             BuildUI();
             AddStartScreenButtons();
         }

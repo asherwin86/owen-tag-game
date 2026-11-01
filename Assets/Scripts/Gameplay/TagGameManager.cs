@@ -196,6 +196,20 @@ namespace TagGame.Gameplay
 
         // ------------------------------------------------------------------ pause / loop
 
+        /// <summary>Pause screen "Menu": stop the round without results and go back to the start screen.</summary>
+        public void QuitToMenu()
+        {
+            Time.timeScale = 1f;
+            bool wasPaused = IsPaused;
+            IsPaused = false;
+            RoundInProgress = false;
+            ClearTaggers();
+            ItTransform = null;
+            player.Frozen = false;
+            player.EnterLobby();
+            if (wasPaused) OnPauseChanged?.Invoke(false);
+        }
+
         public void TogglePause()
         {
             if (!RoundInProgress) return;
