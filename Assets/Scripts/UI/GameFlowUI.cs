@@ -37,6 +37,7 @@ namespace TagGame.UI
             resumeButton.onClick.AddListener(HandleResumeClicked);
             restartFromPauseButton.onClick.AddListener(HandleRestartClicked);
             playAgainButton.onClick.AddListener(HandleRestartClicked);
+            AddMenuButton();
 
             // Known starting state regardless of what was left active in the editor.
             startPanel.SetActive(true);
@@ -65,6 +66,33 @@ namespace TagGame.UI
         private void HandlePauseChanged(bool isPaused)
         {
             pausePanel.SetActive(isPaused);
+        }
+
+        /// <summary>Adds a "Menu" button to the pause screen, under Restart, that goes back to the start screen.</summary>
+        private void AddMenuButton()
+        {
+            var src = restartFromPauseButton;
+            var go = Instantiate(src.gameObject, src.transform.parent);
+            go.name = "MenuButton";
+            var rt = (RectTransform)go.transform;
+            var srcRt = (RectTransform)src.transform;
+            var resumeRt = (RectTransform)resumeButton.transform;
+            Vector2 step = srcRt.anchoredPosition - resumeRt.anchoredPosition;
+            if (step.sqrMagnitude < 1f) step = new Vector2(0f, -(srcRt.sizeDelta.y + 20f));
+            rt.anchoredPosition = srcRt.anchoredPosition + step;
+            var label = go.GetComponentInChildren<TMP_Text>();
+            if (label != null) label.text = "Menu";
+            var btn = go.GetComponent<Button>();
+            btn.onClick = new Button.ButtonClickedEvent();
+            btn.onClick.AddListener(HandleMenuClicked);
+        }
+
+        private void HandleMenuClicked()
+        {
+            pausePanel.SetActive(false);
+            gameOverPanel.SetActive(false);
+            gameManager.QuitToMenu();
+            startPanel.SetActive(true);
         }
 
         private void HandleResumeClicked()
