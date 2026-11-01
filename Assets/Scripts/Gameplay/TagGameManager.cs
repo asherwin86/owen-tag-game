@@ -46,6 +46,8 @@ namespace TagGame.Gameplay
 
         private async void Start()
         {
+            var pr = player != null ? player.GetComponent<Renderer>() : null;
+            TagGame.Juice.Fx.Init(pr != null ? pr.sharedMaterial : null);
             var config = await RemoteConfigManager.Instance.FetchTagGameConfigAsync();
             if (config != null)
             {
@@ -97,9 +99,12 @@ namespace TagGame.Gameplay
             var all = new List<Transform>(_safe.Keys);
             ItTransform = all[UnityEngine.Random.Range(0, all.Count)];
             _lastIt = null;
-            _freezeUntil = Time.time + 1.0f;
-            if (ItTransform == player.transform) player.Frozen = true;
-            TagPopup.Show(ItTransform == player.transform ? "You're IT! Catch a tiger!" : NameOf(ItTransform) + " starts as IT!", new Color(0.95f, 0.65f, 0.15f));
+            // 3-2-1-GO before anyone can move
+            _countdownUntil = Time.time + 3f;
+            _lastCount = 4;
+            _lastBeep = 99;
+            _freezeUntil = _countdownUntil + 1.0f;
+            player.Frozen = true;
         }
 
         private void Spawn(Vector3 pos, Quaternion rot, int i)
@@ -110,6 +115,7 @@ namespace TagGame.Gameplay
             PlayerFace.Attach(tagger.gameObject, tagger.DisplayName, rend != null ? rend.sharedMaterial : null);
             _activeTaggers.Add(tagger);
             _safe[tagger.transform] = 0f;
+            TagGame.Juice.MapBlips.Register(tagger.transform, new Color(0.88f, 0.2f, 0.88f));
         }
 
         private void ClearTaggers()
@@ -117,12 +123,18 @@ namespace TagGame.Gameplay
             foreach (var tagger in _activeTaggers) if (tagger != null) Destroy(tagger.gameObject);
             _activeTaggers.Clear();
             if (_marker != null) _marker.SetActive(false);
+            TagGame.Juice.MapBlips.It = null;
             TagPopup.SetStatus("");
         }
 
         // ------------------------------------------------------------------ rules (used by the bots)
 
         public bool IsIt(Transform t) => t == ItTransform;
+        private float _countdownUntil;
+        private int _lastCount, _lastBeep = 99;
+        /// <summary>True during the 3-2-1 countdown at the start of a round.</summary>
+        public bool CountingDown => RoundInProgress && Time.time < _countdownUntil;
+
         public bool IsFrozen(Transform t) => t == ItTransform && Time.time < _freezeUntil;
 
         private string NameOf(Transform t)
@@ -160,6 +172,10 @@ namespace TagGame.Gameplay
             if (victim == player.transform) player.Frozen = true;
 
             string a = NameOf(tagger), b = NameOf(victim);
+            TagGame.Juice.GameAudio.Play("tag", 1f, UnityEngine.Random.Range(0.95f, 1.1f));
+            TagGame.Juice.Fx.Burst(victim.position, victim == player.transform ? new Color(0.13f, 0.84f, 0.87f) : new Color(0.88f, 0.2f, 0.88f));
+            if (victim == player.transform) { TagGame.Juice.GameAudio.Play("it", 0.8f); FollowCamera.Shake(0.35f); }
+            else if (tagger == player.transform) FollowCamera.Shake(0.15f);
             if (tagger == player.transform) TagPopup.Show("You tagged " + b + "!", new Color(0.2f, 0.8f, 0.35f));
             else if (victim == player.transform) TagPopup.Show(a + " tagged you!  You're IT!", new Color(0.95f, 0.25f, 0.25f));
             else TagPopup.Show(a + " tagged " + b + "!", new Color(0.95f, 0.65f, 0.15f));
@@ -200,6 +216,7 @@ namespace TagGame.Gameplay
         public void QuitToMenu()
         {
             Time.timeScale = 1f;
+            _countdownUntil = 0f;
             bool wasPaused = IsPaused;
             IsPaused = false;
             RoundInProgress = false;
@@ -222,6 +239,26 @@ namespace TagGame.Gameplay
         {
             if (RoundInProgress && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) TogglePause();
             if (!RoundInProgress || IsPaused) return;
+
+            if (Time.time < _countdownUntil)
+            {
+                int c = Mathf.CeilToInt(_countdownUntil - Time.time);
+                if (c != _lastCount)
+                {
+                    _lastCount = c;
+                    TagPopup.Show(c.ToString(), new Color(0.2f, 0.5f, 0.95f));
+                    TagGame.Juice.GameAudio.Play("beep");
+                }
+                UpdateMarker();
+                return;
+            }
+            if (_lastCount > 0)
+            {
+                _lastCount = 0;
+                player.Frozen = ItTransform == player.transform;
+                TagGame.Juice.GameAudio.Play("whistle");
+                TagPopup.Show(ItTransform == player.transform ? "GO! You're IT, catch a tiger!" : "GO! " + NameOf(ItTransform) + " is IT", new Color(0.95f, 0.65f, 0.15f));
+            }
 
             _elapsed += Time.deltaTime;
             TimeRemaining = Mathf.Max(0f, _duration - _elapsed);
@@ -251,6 +288,12 @@ namespace TagGame.Gameplay
                 ? "<color=#FF5050>YOU ARE IT!</color>  touch a tiger  -  safe " + Mathf.FloorToInt(mine) + "s"
                 : "<color=#FF5050>" + NameOf(ItTransform) + "</color> is IT - run!  -  safe " + Mathf.FloorToInt(mine) + "s");
 
+            int secsLeft = Mathf.CeilToInt(TimeRemaining);
+            if (secsLeft <= 10 && secsLeft > 0 && secsLeft != _lastBeep)
+            {
+                _lastBeep = secsLeft;
+                TagGame.Juice.GameAudio.Play("beep", 0.6f, secsLeft <= 3 ? 1.3f : 1f);
+            }
             if (TimeRemaining <= 0f) EndRound();
         }
 
@@ -269,12 +312,14 @@ namespace TagGame.Gameplay
                 _marker.transform.localScale = Vector3.one * 0.6f;
             }
             _marker.SetActive(true);
+            TagGame.Juice.MapBlips.It = ItTransform;
             _marker.transform.position = ItTransform.position + Vector3.up * (2.3f + Mathf.Sin(Time.time * 5f) * 0.12f);
         }
 
         private async void EndRound()
         {
             RoundInProgress = false;
+            TagGame.Juice.GameAudio.Play("buzzer");
             float mine = _safe.TryGetValue(player.transform, out var ms) ? ms : 0f;
 
             // results: rank everyone by safe seconds

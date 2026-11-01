@@ -23,6 +23,20 @@ namespace TagGame.Gameplay
         private int _pi;
         private Vector3 _wander;
         private Transform _lastTarget;
+        private float _dashUntil, _dashReadyAt;
+
+        /// <summary>Bots dash too: a short burst when the chase gets close.</summary>
+        private float DashFactor(float distance)
+        {
+            if (Time.time < _dashUntil) return 2.2f;
+            if (distance < 4.5f && Time.time >= _dashReadyAt && Random.value < 0.02f)
+            {
+                _dashUntil = Time.time + 0.22f;
+                _dashReadyAt = Time.time + Random.Range(3f, 6f);
+                return 2.2f;
+            }
+            return 1f;
+        }
 
         public void Initialize(TagGameManager manager, string displayName)
         {
@@ -37,6 +51,7 @@ namespace TagGame.Gameplay
         private void Update()
         {
             if (_manager == null || !_manager.RoundInProgress) return;
+            if (_manager.CountingDown) return;
             if (_delay > 0f) { _delay -= Time.deltaTime; return; }
             if (_manager.IsFrozen(transform)) return;
 
@@ -71,7 +86,7 @@ namespace TagGame.Gameplay
                 }
                 else _path = null;
                 dir = aim - pos;
-                speed = _speed * 1.12f;
+                speed = _speed * 1.12f * DashFactor(to.magnitude);
             }
             else
             {
@@ -82,7 +97,7 @@ namespace TagGame.Gameplay
                 if (it != null && away.magnitude < 20f)
                 {
                     dir = BestFlee(pos, away.normalized, grid);
-                    speed = _speed * 0.92f;
+                    speed = _speed * 0.92f * DashFactor(away.magnitude);
                 }
                 else
                 {

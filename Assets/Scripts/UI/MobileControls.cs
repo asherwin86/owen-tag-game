@@ -16,6 +16,9 @@ namespace TagGame.Gameplay
     {
         public static Vector2 MoveInput { get; private set; }
         public static bool SprintHeld { get; private set; }
+        private static int _dashFrame = -10;
+        /// <summary>True on the frame the DASH button was pressed.</summary>
+        public static bool DashPressed => Time.frameCount - _dashFrame <= 1;
 
         /// <summary>Set to true to preview the controls with a mouse (e.g. in the editor).</summary>
         public static bool ForceShow = false;
@@ -152,6 +155,12 @@ namespace TagGame.Gameplay
                 new Vector2(-170f, 190f), 160f, new Color(1f, 1f, 1f, 0.3f));
             sprint.gameObject.AddComponent<HoldButton>().OnHeld = held => SprintHeld = held;
             AddLabel(sprint.transform, "RUN", 40f);
+
+            // Dash
+            var dash = MakeCircle(rootGo.transform, "DashButton", new Vector2(1f, 0f),
+                new Vector2(-345f, 120f), 120f, new Color(1f, 0.85f, 0.3f, 0.35f));
+            dash.gameObject.AddComponent<HoldButton>().OnHeld = held => { if (held) _dashFrame = Time.frameCount; };
+            AddLabel(dash.transform, "DASH", 30f);
 
             // On/off toggle (top-left)
             var toggle = MakeCircle(canvasGo.transform, "ControlsToggle", new Vector2(0f, 1f),

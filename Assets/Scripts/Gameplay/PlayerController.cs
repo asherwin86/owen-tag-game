@@ -34,6 +34,22 @@ namespace TagGame.Gameplay
         private bool _confinedToLobby;
         private GameObject _lobbyCircle;
 
+        // dash, speed boosts, footsteps
+        private const float DashTime = 0.22f, DashCooldown = 2.5f, DashMultiplier = 2.6f;
+        private float _dashUntil, _dashReadyAt, _boostUntil, _boost = 1f, _stepDist;
+        public bool IsSprinting { get; private set; }
+        public bool IsDashing => Time.time < _dashUntil;
+        public bool IsBoosted => Time.time < _boostUntil;
+        /// <summary>0..1, 1 = dash ready.</summary>
+        public float DashReady => Mathf.Clamp01(1f - (_dashReadyAt - Time.time) / DashCooldown);
+
+        /// <summary>Speed gem: faster and unlimited sprint for a few seconds.</summary>
+        public void Boost(float multiplier, float seconds)
+        {
+            _boost = multiplier;
+            _boostUntil = Time.time + seconds;
+        }
+
         public float StaminaNormalized => maxStamina <= 0f ? 0f : Mathf.Clamp01(_stamina / maxStamina);
         public bool IsTagged { get; private set; }
 
@@ -112,10 +128,21 @@ namespace TagGame.Gameplay
                 inputDir.Normalize();
             }
 
-            bool wantsSprint = allowSprint && IsSprintHeld() && _stamina > 0f;
-            float speed = moveSpeed * (wantsSprint ? sprintMultiplier : 1f);
+            bool boosted = IsBoosted;
+            bool wantsSprint = allowSprint && IsSprintHeld() && (_stamina > 0f || boosted);
+            float speed = moveSpeed * (wantsSprint ? sprintMultiplier : 1f) * (boosted ? _boost : 1f);
+            IsSprinting = wantsSprint && inputDir.sqrMagnitude > 0.01f;
 
-            if (wantsSprint && inputDir.sqrMagnitude > 0.01f)
+            // dash: a short burst of speed with a cooldown (Left Ctrl / Q, or X on a controller)
+            if (DashPressed() && Time.time >= _dashReadyAt && inputDir.sqrMagnitude > 0.01f && !_confinedToLobby)
+            {
+                _dashUntil = Time.time + DashTime;
+                _dashReadyAt = Time.time + DashCooldown;
+                TagGame.Juice.GameAudio.Play("dash", 0.8f, Random.Range(0.95f, 1.1f));
+            }
+            if (IsDashing) speed *= DashMultiplier;
+
+            if (wantsSprint && !boosted && inputDir.sqrMagnitude > 0.01f)
             {
                 _stamina = Mathf.Max(0f, _stamina - Time.deltaTime);
             }
@@ -145,6 +172,21 @@ namespace TagGame.Gameplay
 
             Vector3 motion = worldMove * speed + Vector3.up * _verticalVelocity;
             _controller.Move(motion * Time.deltaTime);
+
+            // footsteps and dust
+            float moved = worldMove.magnitude * speed * Time.deltaTime;
+            if (moved > 0.0001f && _controller.isGrounded)
+            {
+                _stepDist += moved;
+                float stride = IsSprinting || IsDashing ? 2.6f : 2.0f;
+                if (_stepDist >= stride)
+                {
+                    _stepDist = 0f;
+                    TagGame.Juice.GameAudio.Play("step", IsSprinting ? 0.5f : 0.3f, Random.Range(0.85f, 1.2f));
+                    if (IsSprinting || IsDashing) TagGame.Juice.Fx.Dust(transform.position - Vector3.up * 0.9f);
+                }
+                if (IsDashing) TagGame.Juice.Fx.Dust(transform.position - Vector3.up * 0.9f);
+            }
 
             if (_confinedToLobby)
             {
@@ -192,6 +234,15 @@ namespace TagGame.Gameplay
             }
 
             return move;
+        }
+
+        private static bool DashPressed()
+        {
+            var kb = Keyboard.current;
+            if (kb != null && (kb.leftCtrlKey.wasPressedThisFrame || kb.qKey.wasPressedThisFrame)) return true;
+            var pad = Gamepad.current;
+            if (pad != null && pad.buttonWest.wasPressedThisFrame) return true;
+            return MobileControls.DashPressed;
         }
 
         private static bool IsSprintHeld()
