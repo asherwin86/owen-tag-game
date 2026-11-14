@@ -34,6 +34,7 @@ namespace TagGame.Mega
         public float Accum, WanderUntil, StayUpUntil;
         public Agent Target;
         public GameObject Proxy;
+        public bool Removed;
         public bool Knocked => Time.time < KnockedUntil;
         public bool Busy => Knocked || Time.time < FrozenUntil || Tying;
     }
@@ -49,8 +50,8 @@ namespace TagGame.Mega
         public static bool Active => I != null && I.Running;
 
         public const float RoundSeconds = 300f;
-        public static readonly int[] BotChoices = { 0, 50, 100, 200, 400, 800 };   // 0 = Auto
-        private const int AutoStart = 150, AutoMax = 600;
+        public static readonly int[] BotChoices = { 0, 100, 500, 1000, 2500, 5000, 10000 };   // 0 = Auto
+        private const int AutoStart = 150, AutoMax = 10000;
         private const float FreezeSeconds = 1.5f, NoBackSeconds = 3.5f, KnockSeconds = 4f, TieSeconds = 1.5f;
         private const float BotSpeed = 5.6f, SprintMul = 1.6f, UntiedMul = 0.45f, SneakerMul = 1.25f;
         private static readonly string[] FirstNames = { "Mia", "Leo", "Ava", "Max", "Zoe", "Sam", "Ivy", "Jay", "Kai", "Lily", "Noah", "Ella", "Finn", "Ruby", "Theo", "Isla", "Ben", "Cleo", "Eli", "Nina", "Owen", "Rosa", "Tom", "Uma", "Vic", "Wes", "Yara", "Zac", "Amy", "Ray" };
@@ -80,6 +81,12 @@ namespace TagGame.Mega
         private readonly List<Agent> _its = new List<Agent>();
         private readonly Dictionary<long, List<Agent>> _hash = new Dictionary<long, List<Agent>>();
         private readonly Stack<List<Agent>> _listPool = new Stack<List<Agent>>();
+        // coarse buckets (40 m) of everyone and of the ITs, so 10,000 bots don't each check everyone else
+        private const float CCell = 40f;
+        private readonly Dictionary<long, List<Agent>> _coarse = new Dictionary<long, List<Agent>>();
+        private readonly Dictionary<long, List<Agent>> _itCoarse = new Dictionary<long, List<Agent>>();
+        private readonly List<Agent> _tmpA = new List<Agent>(), _tmpB = new List<Agent>();
+        private float _drawDist = 170f;
         private PlayerController _player;
         private MegaPlayer _mp;
         private MapGrid _grid;
@@ -300,7 +307,7 @@ namespace TagGame.Mega
             if (a.It) SetIt(a, false);
             if (a.Proxy != null) Destroy(a.Proxy);
             _agents.Remove(a);
-            foreach (var o in _agents) if (o.Target == a) o.Target = null;
+            a.Removed = true;   // anyone chasing it lets go next time they think
         }
 
         private static float Street(int k) => -920f + 80f * k;
@@ -392,7 +399,7 @@ namespace TagGame.Mega
                     if (_player == null || hit.collider.gameObject != _player.gameObject) wall = hit.distance;
                 }
                 Agent best = null; float bt = wall;
-                foreach (var a in _agents)
+                foreach (var a in Gather(_coarse, origin, bt, _tmpA))
                 {
                     if (a == shooter || a.Knocked) continue;
                     Vector3 c = a.Pos + Vector3.up * 1.0f;
@@ -484,17 +491,21 @@ namespace TagGame.Mega
                 if (a.Tying && Time.time >= a.TieDoneAt) { a.Tying = false; a.Untied = false; if (a.IsPlayer) { GameAudio.Play("tie", 0.8f); TagPopup.Show("Laces tied!", new Color(0.2f, 0.8f, 0.35f)); } }
             }
 
-            // bots
+            Bucket(_coarse, false);
+            Bucket(_itCoarse, true);
+
+            // bots: close ones every frame, far ones less often (they still play, just in bigger steps)
             Vector3 mp = Me.Pos;
+            int farEvery = _agents.Count > 3000 ? 16 : 8;
             for (int i = 0; i < _agents.Count; i++)
             {
                 var a = _agents[i];
                 if (a.IsPlayer) continue;
                 float dx = a.Pos.x - mp.x, dz = a.Pos.z - mp.z, d2 = dx * dx + dz * dz;
-                int every = d2 < 130f * 130f || a.It ? 1 : (d2 < 320f * 320f ? 3 : 8);
+                int every = d2 < 130f * 130f ? 1 : (d2 < 320f * 320f || a.It ? 3 : farEvery);
                 a.Accum += dt;
                 if (every > 1 && (a.Id + _frame) % every != 0) continue;
-                float step = Mathf.Min(a.Accum, 0.25f);
+                float step = Mathf.Min(a.Accum, 0.5f);
                 a.Accum = 0f;
                 TickBot(a, step, d2 < 150f * 150f);
                 if (a.Proxy != null) a.Proxy.transform.position = a.Pos;
@@ -506,7 +517,7 @@ namespace TagGame.Mega
 
             // status line + the minimap's red ring on the nearest IT
             Agent near = null; float nd = float.MaxValue;
-            foreach (var it in _its) { if (it == Me) continue; float d = (it.Pos - Me.Pos).sqrMagnitude; if (d < nd) { nd = d; near = it; } }
+            foreach (var it in (_its.Count > 60 ? Gather(_itCoarse, Me.Pos, 400f, _tmpB) : _its)) { if (it == Me) continue; float d = (it.Pos - Me.Pos).sqrMagnitude; if (d < nd) { nd = d; near = it; } }
             MapBlips.It = Me.It ? _player.transform : (near != null && near.Proxy != null ? near.Proxy.transform : null);
             string itInfo = near != null ? "nearest IT " + Mathf.RoundToInt(Mathf.Sqrt(nd)) + "m" : "";
             TagPopup.SetStatus(Me.It
@@ -517,6 +528,31 @@ namespace TagGame.Mega
             if (secs <= 10 && secs > 0 && secs != _lastBeep) { _lastBeep = secs; GameAudio.Play("beep", 0.6f, secs <= 3 ? 1.3f : 1f); }
             Draw();
             if (TimeLeft <= 0f) Finish();
+        }
+
+        private void Bucket(Dictionary<long, List<Agent>> h, bool itsOnly)
+        {
+            foreach (var kv in h) { kv.Value.Clear(); _listPool.Push(kv.Value); }
+            h.Clear();
+            var src = itsOnly ? _its : _agents;
+            foreach (var a in src)
+            {
+                long k = HKey(Mathf.FloorToInt(a.Pos.x / CCell), Mathf.FloorToInt(a.Pos.z / CCell));
+                if (!h.TryGetValue(k, out var list)) { list = _listPool.Count > 0 ? _listPool.Pop() : new List<Agent>(); h[k] = list; }
+                list.Add(a);
+            }
+        }
+
+        /// <summary>Everyone in the 40 m buckets touching a circle of radius r around p.</summary>
+        private List<Agent> Gather(Dictionary<long, List<Agent>> h, Vector3 p, float r, List<Agent> into)
+        {
+            into.Clear();
+            int x0 = Mathf.FloorToInt((p.x - r) / CCell), x1 = Mathf.FloorToInt((p.x + r) / CCell);
+            int z0 = Mathf.FloorToInt((p.z - r) / CCell), z1 = Mathf.FloorToInt((p.z + r) / CCell);
+            for (int x = x0; x <= x1; x++)
+                for (int z = z0; z <= z1; z++)
+                    if (h.TryGetValue(HKey(x, z), out var list)) into.AddRange(list);
+            return into;
         }
 
         private static long HKey(int x, int z) => ((long)(x + 4000) << 20) | (long)(z + 4000);
@@ -595,7 +631,8 @@ namespace TagGame.Mega
             }
             else if (Fps > 50f && BotCount < AutoMax)
             {
-                for (int k = 0; k < 25 && BotCount < AutoMax; k++) AddBot(false);
+                int add = Mathf.Max(25, BotCount / 4);
+                for (int k = 0; k < add && BotCount < AutoMax; k++) AddBot(false);
             }
         }
 
@@ -617,6 +654,7 @@ namespace TagGame.Mega
             if (now >= a.ThinkAt) { a.ThinkAt = now + Random.Range(0.35f, 0.6f); Think(a, near); }
 
             // shooting
+            if (a.Target != null && a.Target.Removed) a.Target = null;
             if (a.HasGun && a.Target != null && now >= a.NextShot && !a.Target.Knocked)
             {
                 var w = MegaItems.Weapon(a.Gun);
@@ -689,7 +727,7 @@ namespace TagGame.Mega
         private Agent NearestIt(Agent a, float maxDist)
         {
             Agent best = null; float bd = maxDist * maxDist;
-            foreach (var it in _its)
+            foreach (var it in Gather(_itCoarse, a.Pos, maxDist, _tmpB))
             {
                 if (it == a) continue;
                 float d = (it.Pos - a.Pos).sqrMagnitude;
@@ -707,7 +745,9 @@ namespace TagGame.Mega
             {
                 // chase the nearest runner (you a bit more often when you're close)
                 Agent best = null; float bd = float.MaxValue;
-                foreach (var o in _agents)
+                var pool = _agents.Count > 1500 ? Gather(_coarse, a.Pos, 70f, _tmpB) : _agents;
+                if (pool.Count < 3) pool = _agents.Count > 1500 ? Gather(_coarse, a.Pos, 200f, _tmpB) : _agents;
+                foreach (var o in pool)
                 {
                     if (o.It || o == a) continue;
                     if (o == a.NoBackFrom && now < a.NoBackUntil) continue;
@@ -1015,7 +1055,8 @@ namespace TagGame.Mega
             var cam = Camera.main;
             if (cam == null || _capsule == null) return;
             Vector3 cp = cam.transform.position, cf = cam.transform.forward;
-            const float maxD = 170f;
+            float maxD = _drawDist;
+            int drawn = 0;
             foreach (var a in _agents)
             {
                 if (a.IsPlayer) continue;
@@ -1023,6 +1064,7 @@ namespace TagGame.Mega
                 float d2 = to.sqrMagnitude;
                 if (d2 > maxD * maxD) continue;
                 if (d2 > 225f && Vector3.Dot(to, cf) < 0f) continue;
+                drawn++;
                 Quaternion rot = Quaternion.Euler(0f, a.Yaw, 0f);
                 Material body = a.Knocked ? _downMat : (a.It ? _itMat : _bodyMats[a.ColorIdx]);
                 if (a.Knocked)
@@ -1043,6 +1085,9 @@ namespace TagGame.Mega
                 }
                 if (a.It) Graphics.DrawMesh(_sphere, Matrix4x4.TRS(a.Pos + Vector3.up * (2.5f + Mathf.Sin(Time.time * 5f + a.Id) * 0.12f), Quaternion.identity, Vector3.one * 0.55f), _hatMat, 0, null, 0, null, false, false);
             }
+            // keep the number of drawn bots sensible in big crowds by pulling in the draw distance
+            if (drawn > 450) _drawDist = Mathf.Max(60f, _drawDist - 5f);
+            else if (drawn < 300) _drawDist = Mathf.Min(170f, _drawDist + 2f);
             // you: red marker when you're IT
             if (Me != null && Me.It && _player != null)
                 Graphics.DrawMesh(_sphere, Matrix4x4.TRS(_player.transform.position + Vector3.up * (1.6f + Mathf.Sin(Time.time * 5f) * 0.12f), Quaternion.identity, Vector3.one * 0.55f), _hatMat, 0, null, 0, null, false, false);
@@ -1053,7 +1098,7 @@ namespace TagGame.Mega
         {
             Agent best = null; float bs = float.MaxValue;
             float cos = Mathf.Cos(coneDeg * Mathf.Deg2Rad);
-            foreach (var a in _agents)
+            foreach (var a in Gather(_coarse, origin, range, _tmpA))
             {
                 if (a.IsPlayer || a.Knocked) continue;
                 Vector3 to = a.Pos + Vector3.up - origin;

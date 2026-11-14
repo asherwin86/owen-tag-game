@@ -83,8 +83,8 @@ namespace TagGame.Mega
             for (int i = 0; i < _botButtons.Length; i++)
             {
                 int id = i;
-                string label = MegaGame.BotChoices[i] == 0 ? "Auto" : MegaGame.BotChoices[i].ToString();
-                _botButtons[i] = MG.MakeButton(s, label, MG.C, new Vector2((i - 2.5f) * 190f, 70f), new Vector2(170f, 80f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.SetBotChoice(id); RefreshBots(); }, 32);
+                string label = MegaGame.BotChoices[i] == 0 ? "Auto" : MegaGame.BotChoices[i].ToString("N0");
+                _botButtons[i] = MG.MakeButton(s, label, MG.C, new Vector2((i - (_botButtons.Length - 1) * 0.5f) * 190f, 70f), new Vector2(170f, 80f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.SetBotChoice(id); RefreshBots(); }, 32);
             }
             _info = MG.MakeText(s, "", 24, MG.C, new Vector2(0f, -5f), new Vector2(1200f, 40f));
             _info.color = new Color(0.75f, 0.8f, 0.85f);
@@ -218,8 +218,8 @@ namespace TagGame.Mega
             for (int i = 0; i < _botButtons.Length; i++)
                 _botButtons[i].GetComponent<Image>().color = i == sel ? new Color(0.95f, 0.5f, 0.1f) : new Color(0.2f, 0.2f, 0.28f);
             _info.text = MegaGame.BotChoices[sel] == 0
-                ? "Auto: starts with 150 bots and adds or removes bots to keep the game smooth (up to 600)"
-                : MegaGame.BotChoices[sel] + " bots" + (MegaGame.BotChoices[sel] >= 400 ? "  (needs a fast computer)" : "");
+                ? "Auto: starts with 150 bots and keeps adding more while your computer stays smooth (up to 10,000)"
+                : MegaGame.BotChoices[sel].ToString("N0") + " bots" + (MegaGame.BotChoices[sel] >= 5000 ? "  (pushes your computer to the limit!)" : (MegaGame.BotChoices[sel] >= 1000 ? "  (needs a fast computer)" : ""));
         }
 
         private void StartGame() { StartCoroutine(StartRoutine()); }
@@ -273,7 +273,7 @@ namespace TagGame.Mega
             int secs = Mathf.CeilToInt(g.TimeLeft);
             _timer.text = (secs / 60) + ":" + (secs % 60).ToString("00");
             _timer.color = secs <= 30 ? new Color(1f, 0.35f, 0.3f) : Color.white;
-            _rank.text = "Rank <b>" + g.MyRank() + "</b> / " + g.Agents.Count + "\n" + g.ItCount + " IT · bots " + g.BotCount + (g.AutoBots ? " (auto)" : "") + " · " + Mathf.RoundToInt(g.Fps) + " fps";
+            _rank.text = "Rank <b>" + g.MyRank().ToString("N0") + "</b> / " + g.Agents.Count.ToString("N0") + "\n" + g.ItCount + " IT · bots " + g.BotCount + (g.AutoBots ? " (auto)" : "") + " · " + Mathf.RoundToInt(g.Fps) + " fps";
             var sb = new StringBuilder();
             foreach (var f in g.Feed) sb.Append(f).Append('\n');
             _feed.text = sb.ToString();
