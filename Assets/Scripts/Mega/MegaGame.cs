@@ -147,9 +147,14 @@ namespace TagGame.Mega
             _capsule = Grab(PrimitiveType.Capsule); _cube = Grab(PrimitiveType.Cube); _sphere = Grab(PrimitiveType.Sphere);
             var pr = _player != null ? _player.GetComponent<Renderer>() : null;
             Material baseMat = pr != null ? pr.sharedMaterial : null;
+            // a material with GPU instancing turned on (kept in Resources so the build keeps its shader variants):
+            // then thousands of bots go to the graphics card in a few big batches instead of one by one
+            var inst = Resources.Load<Material>("MegaBotInstanced");
+            _instanced = inst != null && SystemInfo.supportsInstancing && inst.shader != null && inst.shader.isSupported && !inst.shader.name.StartsWith("Hidden/InternalError");
             Material Make(Color c, float glow = 0f)
             {
-                var m = baseMat != null ? new Material(baseMat) : new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                var m = _instanced ? new Material(inst) : (baseMat != null ? new Material(baseMat) : new Material(Shader.Find("Universal Render Pipeline/Lit")));
+                if (_instanced) m.enableInstancing = true;
                 m.mainTexture = null; m.color = c;
                 if (glow > 0f && m.HasProperty("_EmissionColor")) { m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", c * glow); }
                 return m;
@@ -1233,6 +1238,41 @@ namespace TagGame.Mega
 
         // ================================================================== drawing
 
+        // ---- batched drawing (GPU instancing when available)
+        private bool _instanced;
+        private class Batch { public Mesh Mesh; public Material Mat; public bool Shadow; public readonly List<Matrix4x4> M = new List<Matrix4x4>(); }
+        private readonly List<Batch> _batches = new List<Batch>();
+        private readonly Matrix4x4[] _chunk = new Matrix4x4[1023];
+
+        private void Put(Mesh mesh, Material mat, Matrix4x4 m, bool shadow)
+        {
+            if (!_instanced) { Graphics.DrawMesh(mesh, m, mat, 0, null, 0, null, shadow, true); return; }
+            foreach (var b in _batches) if (b.Mesh == mesh && b.Mat == mat && b.Shadow == shadow) { b.M.Add(m); return; }
+            var nb = new Batch { Mesh = mesh, Mat = mat, Shadow = shadow };
+            nb.M.Add(m);
+            _batches.Add(nb);
+        }
+
+        private void FlushBatches()
+        {
+            foreach (var b in _batches)
+            {
+                if (b.M.Count == 0) continue;
+                var rp = new RenderParams(b.Mat)
+                {
+                    shadowCastingMode = b.Shadow ? UnityEngine.Rendering.ShadowCastingMode.On : UnityEngine.Rendering.ShadowCastingMode.Off,
+                    receiveShadows = true,
+                };
+                for (int start = 0; start < b.M.Count; start += _chunk.Length)
+                {
+                    int n = Mathf.Min(_chunk.Length, b.M.Count - start);
+                    b.M.CopyTo(start, _chunk, 0, n);
+                    Graphics.RenderMeshInstanced(rp, b.Mesh, 0, _chunk, n);
+                }
+                b.M.Clear();
+            }
+        }
+
         private void Draw()
         {
             var cam = Camera.main;
@@ -1240,6 +1280,7 @@ namespace TagGame.Mega
             Vector3 cp = cam.transform.position, cf = cam.transform.forward;
             float maxD = _drawDist;
             int drawn = 0;
+            float detail2 = _instanced ? 110f * 110f : 70f * 70f, shadow2 = _instanced ? 80f * 80f : 40f * 40f;
             foreach (var a in _agents)
             {
                 if (a.IsPlayer) continue;
@@ -1253,27 +1294,30 @@ namespace TagGame.Mega
                 if (a.Knocked)
                 {
                     Quaternion lie = rot * Quaternion.Euler(90f, 0f, 0f);
-                    Graphics.DrawMesh(_capsule, Matrix4x4.TRS(a.Pos + Vector3.up * 0.5f, lie, Vector3.one), body, 0, null, 0, null, false, true);
+                    Put(_capsule, body, Matrix4x4.TRS(a.Pos + Vector3.up * 0.5f, lie, Vector3.one), false);
                     continue;
                 }
                 float bob = a.HasGoal ? Mathf.Abs(Mathf.Sin(Time.time * 9f + a.Id)) * 0.08f : 0f;
                 Vector3 c = a.Pos + Vector3.up * (1f + bob);
-                Graphics.DrawMesh(_capsule, Matrix4x4.TRS(c, rot, Vector3.one), body, 0, null, 0, null, d2 < 40f * 40f, true);
-                if (d2 < 70f * 70f)
+                Put(_capsule, body, Matrix4x4.TRS(c, rot, Vector3.one), d2 < shadow2);
+                if (d2 < detail2)
                 {
                     Vector3 fwd = rot * Vector3.forward, right = rot * Vector3.right;
-                    Graphics.DrawMesh(_cube, Matrix4x4.TRS(c + Vector3.up * 0.45f + fwd * 0.42f, rot, new Vector3(0.6f, 0.16f, 0.12f)), _eyeMat, 0, null, 0, null, false, false);
-                    if (a.HasGun) Graphics.DrawMesh(_cube, Matrix4x4.TRS(c + right * 0.55f + fwd * 0.3f, rot, new Vector3(0.12f, 0.14f, 0.7f)), _gunMat, 0, null, 0, null, false, false);
-                    if (a.Untied) Graphics.DrawMesh(_cube, Matrix4x4.TRS(a.Pos + fwd * 0.5f + Vector3.up * 0.05f, rot, new Vector3(0.5f, 0.04f, 0.3f)), _eyeMat, 0, null, 0, null, false, false);
+                    Put(_cube, _eyeMat, Matrix4x4.TRS(c + Vector3.up * 0.45f + fwd * 0.42f, rot, new Vector3(0.6f, 0.16f, 0.12f)), false);
+                    if (a.HasGun) Put(_cube, _gunMat, Matrix4x4.TRS(c + right * 0.55f + fwd * 0.3f, rot, new Vector3(0.12f, 0.14f, 0.7f)), false);
+                    if (a.Untied) Put(_cube, _eyeMat, Matrix4x4.TRS(a.Pos + fwd * 0.5f + Vector3.up * 0.05f, rot, new Vector3(0.5f, 0.04f, 0.3f)), false);
                 }
-                if (a.It) Graphics.DrawMesh(_sphere, Matrix4x4.TRS(a.Pos + Vector3.up * (2.5f + Mathf.Sin(Time.time * 5f + a.Id) * 0.12f), Quaternion.identity, Vector3.one * 0.55f), _hatMat, 0, null, 0, null, false, false);
+                if (a.It) Put(_sphere, _hatMat, Matrix4x4.TRS(a.Pos + Vector3.up * (2.5f + Mathf.Sin(Time.time * 5f + a.Id) * 0.12f), Quaternion.identity, Vector3.one * 0.55f), false);
             }
-            // keep the number of drawn bots sensible in big crowds by pulling in the draw distance
-            if (drawn > 450) _drawDist = Mathf.Max(60f, _drawDist - 5f);
-            else if (drawn < 300) _drawDist = Mathf.Min(170f, _drawDist + 2f);
             // you: red marker when you're IT
             if (Me != null && Me.It && _player != null)
-                Graphics.DrawMesh(_sphere, Matrix4x4.TRS(_player.transform.position + Vector3.up * (1.6f + Mathf.Sin(Time.time * 5f) * 0.12f), Quaternion.identity, Vector3.one * 0.55f), _hatMat, 0, null, 0, null, false, false);
+                Put(_sphere, _hatMat, Matrix4x4.TRS(_player.transform.position + Vector3.up * (1.6f + Mathf.Sin(Time.time * 5f) * 0.12f), Quaternion.identity, Vector3.one * 0.55f), false);
+            FlushBatches();
+            // keep the number of drawn bots sensible by pulling in the draw distance (the graphics card can take far more when instancing)
+            int hi = _instanced ? 4000 : 450, lo = _instanced ? 2500 : 300;
+            float far = _instanced ? 260f : 170f;
+            if (drawn > hi) _drawDist = Mathf.Max(60f, _drawDist - 5f);
+            else if (drawn < lo) _drawDist = Mathf.Min(far, _drawDist + 2f);
         }
 
         /// <summary>The bot nearest the aim line, for the player's auto-aim.</summary>
