@@ -83,7 +83,8 @@ namespace TagGame.Mega
             for (int i = 0; i < _botButtons.Length; i++)
             {
                 int id = i;
-                string label = MegaGame.BotChoices[i] == 0 ? "Auto" : (MegaGame.BotChoices[i] >= 1000000 ? "1 MILLION" : MegaGame.BotChoices[i].ToString("N0"));
+                long v = MegaGame.BotChoices[i];
+                string label = v == 0 ? "Auto" : v >= 1000000000000 ? "1 TRILLION" : v >= 1000000000 ? "1 BILLION" : v >= 1000000 ? "1 MILLION" : v.ToString("N0");
                 _botButtons[i] = MG.MakeButton(s, label, MG.C, new Vector2((i - (_botButtons.Length - 1) * 0.5f) * 230f, 125f), new Vector2(210f, 70f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.SetBotChoice(id); RefreshBots(); }, 30);
             }
             _info = MG.MakeText(s, "", 22, MG.C, new Vector2(0f, 72f), new Vector2(1500f, 36f));
@@ -227,10 +228,12 @@ namespace TagGame.Mega
                 _botButtons[i].GetComponent<Image>().color = i == sel ? new Color(0.95f, 0.5f, 0.1f) : new Color(0.2f, 0.2f, 0.28f);
             for (int i = 0; i < _countryButtons.Length; i++)
                 _countryButtons[i].GetComponent<Image>().color = i == MegaGame.I.StartCountry ? new Color(0.2f, 0.5f, 0.9f) : new Color(0.2f, 0.2f, 0.28f);
-            int n = MegaGame.BotChoices[sel];
+            long n = MegaGame.BotChoices[sel];
             _info.text = n == 0
                 ? "Auto: 10,000 players. The zone of full bots around you grows or shrinks to keep the game smooth"
-                : n.ToString("N0") + " players - the nearest (up to ~2,000) are full bots around you, the rest roam the country as the crowd";
+                : n > MegaGame.MaxSimulated
+                    ? n.ToString("N0") + " players - full bots around you, a million roaming your country, and the rest counted across the world. For really good PCs!"
+                    : n.ToString("N0") + " players - the nearest (up to ~2,000) are full bots around you, the rest roam the country as the crowd";
         }
 
         private void StartGame() { StartCoroutine(StartRoutine()); }

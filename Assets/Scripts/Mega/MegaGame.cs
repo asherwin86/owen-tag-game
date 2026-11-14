@@ -52,7 +52,10 @@ namespace TagGame.Mega
 
         public const float RoundSeconds = 600f;
         public const int MaxIts = 100;   // never more than 100 taggers at once, even with a million players
-        public static readonly int[] BotChoices = { 0, 1000, 10000, 100000, 1000000 };   // 0 = Auto (10,000 with a self-adjusting zone around you)
+        public static readonly long[] BotChoices = { 0, 10000, 100000, 1000000, 1000000000, 1000000000000 };   // 0 = Auto (10,000 with a self-adjusting zone around you)
+        /// <summary>Most players that are each simulated (the full bots near you plus the crowd in your country).
+        /// Above this, the rest of the players are counted across the world, not walked around one by one.</summary>
+        public const int MaxSimulated = 1000000;
         private const int AutoStart = 10000, AutoMax = 10000;
         private const float FreezeSeconds = 1.5f, NoBackSeconds = 3.5f, KnockSeconds = 4f, TieSeconds = 1.5f;
         private const float BotSpeed = 5.6f, SprintMul = 1.6f, UntiedMul = 0.45f, SneakerMul = 1.25f;
@@ -70,10 +73,12 @@ namespace TagGame.Mega
         public bool CountingDown => Running && Time.time < _countdownUntil;
         public int BotChoice { get; private set; }               // index into BotChoices
         public bool AutoBots => BotChoices[BotChoice] == 0;
-        public int BotCount => _agents.Count - 1 + _crowd.Count;
+        public long BotCount => _agents.Count - 1 + _crowd.Count + _counted;
+        private long _counted;   // players beyond the simulated million: the rest of the world
         /// <summary>Bots near you that are fully simulated and drawn (the rest are the far-away crowd).</summary>
         public int NearbyCount => _agents.Count - 1;
-        public int TotalPlayers => _agents.Count + _crowd.Count;
+        public long TotalPlayers => _agents.Count + _crowd.Count + _counted;
+        private int SimulatedPlayers => _agents.Count + _crowd.Count;
         public bool CrowdMode { get; private set; }
         private readonly MegaCrowd _crowd = new MegaCrowd();
         private int _activeCap = 2000, _demoteCursor;
@@ -210,7 +215,9 @@ namespace TagGame.Mega
             var cam = Camera.main;
             if (cam != null) { if (_savedFar < 0f) _savedFar = cam.farClipPlane; cam.farClipPlane = 2500f; }
 
-            int want = AutoBots ? AutoStart : BotChoices[BotChoice];
+            long wantAll = AutoBots ? AutoStart : BotChoices[BotChoice];
+            int want = (int)System.Math.Min(wantAll, MaxSimulated);
+            _counted = wantAll - want;
             CrowdMode = true;
             _activeCap = Mathf.Min(2000, want);
             for (int i = 0; i < _activeCap; i++) AddBot(true);
@@ -239,7 +246,7 @@ namespace TagGame.Mega
             AddFeed("Planes at the airport fly you to other countries (E)");
         }
 
-        private int TotalItTarget => Mathf.Clamp(Mathf.RoundToInt(TotalPlayers / 30f), 1, MaxIts);
+        private int TotalItTarget => (int)System.Math.Max(1, System.Math.Min(MaxIts, TotalPlayers / 30));
 
         /// <summary>Where the crowd lives: the whole city, or 10 km around you in the Super Mega World.</summary>
         private void RegionFor(int country, Vector3 near, bool force)
@@ -247,7 +254,7 @@ namespace TagGame.Mega
             if (country < 0) return;
             var c = MegaWorld.Countries[country];
             // the crowd's area: big enough for everyone, but not so big that the streets around you are empty
-            float rh = Mathf.Min(c.Half, Mathf.Max(1500f, Mathf.Sqrt(Mathf.Max(1, TotalPlayers)) * 25f));
+            float rh = Mathf.Min(c.Half, Mathf.Max(1500f, Mathf.Sqrt(Mathf.Max(1, SimulatedPlayers)) * 25f));
             rh = Mathf.Round(rh / 100f) * 100f;
             double rcx = c.CX, rcz = c.CZ;
             if (rh < c.Half - 1f)
@@ -341,7 +348,7 @@ namespace TagGame.Mega
             GameAudio.Play("buzzer");
             var rows = new List<Agent>(_agents);
             rows.Sort((a, b) => b.Safe.CompareTo(a.Safe));
-            int rank = rows.IndexOf(Me) + 1 + (CrowdMode ? _crowd.RankAbove : 0);
+            long rank = MyRank();
             if (CrowdMode)
             {
                 var top = new List<MegaCrowd.KeyValuePair>();
@@ -351,7 +358,7 @@ namespace TagGame.Mega
             }
             var sb = new StringBuilder();
             sb.Append(rank == 1 ? "<color=#FFD84A>YOU WIN MEGA MODE!</color>" : "Time's up!");
-            sb.Append("\nYou were safe ").Append(Mathf.FloorToInt(Me.Safe)).Append("s - place ").Append(rank).Append(" of ").Append(TotalPlayers.ToString("N0"));
+            sb.Append("\nYou were safe ").Append(Mathf.FloorToInt(Me.Safe)).Append("s - place ").Append(rank.ToString("N0")).Append(" of ").Append(TotalPlayers.ToString("N0"));
             sb.Append("\n\n");
             for (int i = 0; i < Mathf.Min(5, rows.Count); i++)
                 sb.Append(i + 1).Append(". ").Append(rows[i].Name).Append("  ").Append(Mathf.FloorToInt(rows[i].Safe)).Append("s\n");
@@ -360,12 +367,15 @@ namespace TagGame.Mega
             OnFinished?.Invoke();
         }
 
-        public int MyRank()
+        public long MyRank()
         {
             if (Me == null) return 0;
-            int r = 1;
+            long r = 1;
             foreach (var a in _agents) if (a != Me && a.Safe > Me.Safe) r++;
             if (CrowdMode) r += _crowd.RankAbove;
+            // the counted rest of the world: with at most 100 taggers among them, nearly all of them are never IT,
+            // so they have been safe the whole round. Anyone who has been IT for a second is behind them all.
+            if (_counted > 0 && Me.Safe < _elapsed - 1f) r += _counted;
             return r;
         }
 
@@ -803,7 +813,7 @@ namespace TagGame.Mega
             _adjustAt = Time.unscaledTime + 3f;
             if (Fps < 28f && BotCount > 30)
             {
-                int remove = Mathf.Max(5, BotCount / 5);
+                int remove = (int)System.Math.Max(5, BotCount / 5);
                 for (int k = 0; k < remove; k++)
                 {
                     // take away bots far from you first
@@ -820,7 +830,7 @@ namespace TagGame.Mega
             }
             else if (Fps > 50f && BotCount < AutoMax)
             {
-                int add = Mathf.Max(25, BotCount / 4);
+                int add = (int)System.Math.Max(25, BotCount / 4);
                 for (int k = 0; k < add && BotCount < AutoMax; k++) AddBot(false);
             }
         }
