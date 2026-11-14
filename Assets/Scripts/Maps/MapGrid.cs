@@ -90,7 +90,7 @@ namespace TagGame.Maps
         private static readonly int[] DZ = { 0, 0, 1, -1, 1, -1, 1, -1 };
 
         /// <summary>A* from a to b. Returns waypoints (world positions) or null if there is no way.</summary>
-        public List<Vector3> FindPath(Vector3 a, Vector3 b)
+        public List<Vector3> FindPath(Vector3 a, Vector3 b, int maxNodes = 200000)
         {
             int s = NearestFree(a), e = NearestFree(b);
             if (s < 0 || e < 0) return null;
@@ -101,7 +101,7 @@ namespace TagGame.Maps
             Push(s, Heur(s % N, s / N, ex, ez));
             bool found = false;
             int guard = 0;
-            while (_heapIdx.Count > 0 && guard++ < 200000)
+            while (_heapIdx.Count > 0 && guard++ < maxNodes)
             {
                 int cur = Pop();
                 if (cur == e) { found = true; break; }
