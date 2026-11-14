@@ -7,11 +7,20 @@ namespace TagGame.Maps
     /// Flat grid of "blocked" cells built from the map's solid boxes. The AI taggers use it
     /// to path-find around buildings (A*) and to check if they can run straight at you.
     /// </summary>
-    public class MapGrid
+    /// <summary>Anything bots can walk around on: one map's grid, or the streamed world's chunks.</summary>
+    public interface IWalk
+    {
+        bool IsBlocked(float x, float z);
+        bool Los(Vector3 a, Vector3 b);
+        List<Vector3> FindPath(Vector3 a, Vector3 b, int maxNodes = 200000);
+    }
+
+    public class MapGrid : IWalk
     {
         public readonly float Half;
         public readonly float Cell;
         public readonly int N;
+        public float OX, OZ;   // scene position of the grid's centre (moves when the origin shifts)
         private readonly bool[] _blocked;
 
         // A* scratch (reused between searches, so repathing doesn't allocate much)
@@ -22,9 +31,9 @@ namespace TagGame.Maps
         private readonly List<int> _heapIdx = new List<int>();
         private readonly List<float> _heapF = new List<float>();
 
-        public MapGrid(float half, float cell)
+        public MapGrid(float half, float cell, float ox = 0f, float oz = 0f)
         {
-            Half = half; Cell = cell;
+            Half = half; Cell = cell; OX = ox; OZ = oz;
             N = Mathf.CeilToInt(half * 2f / cell);
             _blocked = new bool[N * N];
             _g = new float[N * N];
@@ -34,18 +43,21 @@ namespace TagGame.Maps
 
         public void BlockRect(float cx, float cz, float sx, float sz, float inflate)
         {
-            int x0 = ToCell(cx - sx * 0.5f - inflate), x1 = ToCell(cx + sx * 0.5f + inflate);
-            int z0 = ToCell(cz - sz * 0.5f - inflate), z1 = ToCell(cz + sz * 0.5f + inflate);
+            int x0 = CX(cx - sx * 0.5f - inflate), x1 = CX(cx + sx * 0.5f + inflate);
+            int z0 = CZ(cz - sz * 0.5f - inflate), z1 = CZ(cz + sz * 0.5f + inflate);
             for (int z = z0; z <= z1; z++)
                 for (int x = x0; x <= x1; x++)
                     if (x >= 0 && z >= 0 && x < N && z < N) _blocked[z * N + x] = true;
         }
 
-        private int ToCell(float w) { return Mathf.FloorToInt((w + Half) / Cell); }
+        private int CX(float x) { return Mathf.FloorToInt((x - OX + Half) / Cell); }
+        private int CZ(float z) { return Mathf.FloorToInt((z - OZ + Half) / Cell); }
+
+        public bool Contains(float x, float z) { return Mathf.Abs(x - OX) < Half && Mathf.Abs(z - OZ) < Half; }
 
         public bool IsBlocked(float x, float z)
         {
-            int cx = ToCell(x), cz = ToCell(z);
+            int cx = CX(x), cz = CZ(z);
             if (cx < 0 || cz < 0 || cx >= N || cz >= N) return true;
             return _blocked[cz * N + cx];
         }
@@ -67,12 +79,12 @@ namespace TagGame.Maps
         private Vector3 CellCenter(int idx, float y)
         {
             int x = idx % N, z = idx / N;
-            return new Vector3(-Half + (x + 0.5f) * Cell, y, -Half + (z + 0.5f) * Cell);
+            return new Vector3(OX - Half + (x + 0.5f) * Cell, y, OZ - Half + (z + 0.5f) * Cell);
         }
 
         private int NearestFree(Vector3 p)
         {
-            int cx = Mathf.Clamp(ToCell(p.x), 0, N - 1), cz = Mathf.Clamp(ToCell(p.z), 0, N - 1);
+            int cx = Mathf.Clamp(CX(p.x), 0, N - 1), cz = Mathf.Clamp(CZ(p.z), 0, N - 1);
             if (!_blocked[cz * N + cx]) return cz * N + cx;
             for (int r = 1; r < 12; r++)
                 for (int dz = -r; dz <= r; dz++)
@@ -90,7 +102,7 @@ namespace TagGame.Maps
         private static readonly int[] DZ = { 0, 0, 1, -1, 1, -1, 1, -1 };
 
         /// <summary>A* from a to b. Returns waypoints (world positions) or null if there is no way.</summary>
-        public List<Vector3> FindPath(Vector3 a, Vector3 b)
+        public List<Vector3> FindPath(Vector3 a, Vector3 b, int maxNodes = 200000)
         {
             int s = NearestFree(a), e = NearestFree(b);
             if (s < 0 || e < 0) return null;
@@ -101,7 +113,7 @@ namespace TagGame.Maps
             Push(s, Heur(s % N, s / N, ex, ez));
             bool found = false;
             int guard = 0;
-            while (_heapIdx.Count > 0 && guard++ < 200000)
+            while (_heapIdx.Count > 0 && guard++ < maxNodes)
             {
                 int cur = Pop();
                 if (cur == e) { found = true; break; }

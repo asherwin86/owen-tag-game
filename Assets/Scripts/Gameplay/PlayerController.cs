@@ -50,6 +50,14 @@ namespace TagGame.Gameplay
             _boostUntil = Time.time + seconds;
         }
 
+        // Mega Mode hooks: shoelaces, sneakers, jump pads, elevators
+        public float ExternalSpeed { get; set; } = 1f;
+        public bool SprintBlocked { get; set; }
+        public void RefillStamina() { _stamina = maxStamina; }
+        public void Launch(float upSpeed) { _verticalVelocity = upSpeed; }
+        public CharacterController Controller => _controller;
+        public bool Grounded => _controller != null && _controller.isGrounded;
+
         public float StaminaNormalized => maxStamina <= 0f ? 0f : Mathf.Clamp01(_stamina / maxStamina);
         public bool IsTagged { get; private set; }
 
@@ -129,8 +137,8 @@ namespace TagGame.Gameplay
             }
 
             bool boosted = IsBoosted;
-            bool wantsSprint = allowSprint && IsSprintHeld() && (_stamina > 0f || boosted);
-            float speed = moveSpeed * (wantsSprint ? sprintMultiplier : 1f) * (boosted ? _boost : 1f);
+            bool wantsSprint = allowSprint && !SprintBlocked && IsSprintHeld() && (_stamina > 0f || boosted);
+            float speed = moveSpeed * (wantsSprint ? sprintMultiplier : 1f) * (boosted ? _boost : 1f) * ExternalSpeed;
             IsSprinting = wantsSprint && inputDir.sqrMagnitude > 0.01f;
 
             // dash: a short burst of speed with a cooldown (Left Ctrl / Q, or X on a controller)

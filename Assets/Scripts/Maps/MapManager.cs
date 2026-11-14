@@ -14,12 +14,13 @@ namespace TagGame.Maps
     {
         public static MapManager I { get; private set; }
 
-        public const int Count = 3;
+        public const int Count = 3;          // normal maps (Practice picker and online votes)
+        public const int MegaId = 3;         // Mega City, only used by Mega Mode
         public static readonly string[] Names = { "Arena", "School", "City" };
         public static readonly string[] Blurbs = { "Small & chaotic", "Huge: classrooms, gym, halls", "Huge: streets, blocks, alleys" };
         public static readonly float[] SpawnRadius = { 9f, 20f, 24f };
         public static readonly int[] PracticeTaggers = { 6, 10, 14 };
-        private static readonly Vector3[] CamOffset = { new Vector3(0f, 4f, -7f), new Vector3(0f, 11f, -8f), new Vector3(0f, 15f, -9f) };
+        private static readonly Vector3[] CamOffset = { new Vector3(0f, 4f, -7f), new Vector3(0f, 11f, -8f), new Vector3(0f, 15f, -9f), new Vector3(0f, 7.5f, -9f) };
         private const string PrefMap = "TagGame.PracticeMap";
 
         public int Current { get; private set; } = -1;
@@ -75,7 +76,7 @@ namespace TagGame.Maps
 
         public void Load(int id)
         {
-            id = Mathf.Clamp(id, 0, Count - 1);
+            id = Mathf.Clamp(id, 0, MegaId);
             if (id == Current && (id == 0 || _root != null)) { ApplyCamera(id); return; }
             if (_root != null) { Destroy(_root.gameObject); _root = null; }
             _flatMats.Clear();
@@ -84,6 +85,7 @@ namespace TagGame.Maps
             if (_ground != null) _ground.SetActive(id == 0);
             if (id == 1) BuildSchool();
             else if (id == 2) BuildCity();
+            else if (id == MegaId) BuildMega();
             ApplyCamera(id);
             OnMapChanged?.Invoke(id);
         }
@@ -96,7 +98,7 @@ namespace TagGame.Maps
         // ------------------------------------------------------------ AI helpers
 
         /// <summary>How far from the centre bots may roam on the current map.</summary>
-        public float PlayLimit => Current == 2 ? 120f : (Current == 1 ? 72f : 14f);
+        public float PlayLimit => Current == MegaId ? 990f : (Current == 2 ? 120f : (Current == 1 ? 72f : 14f));
 
         public int PracticeTaggerCount => PracticeTaggers[Mathf.Clamp(Current, 0, Count - 1)];
 
@@ -159,7 +161,7 @@ namespace TagGame.Maps
 
         private Transform Root()
         {
-            if (_root == null) _root = new GameObject("Map_" + Names[Mathf.Clamp(Current, 0, Count - 1)]).transform;
+            if (_root == null) _root = new GameObject(Current == MegaId ? "Map_World" : "Map_" + Names[Mathf.Clamp(Current, 0, Count - 1)]).transform;
             return _root;
         }
 

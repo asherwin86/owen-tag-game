@@ -13,7 +13,7 @@ namespace TagGame.Juice
     public class Atmosphere : MonoBehaviour
     {
         private static readonly Color FogColor = new Color(0.74f, 0.82f, 0.9f);
-        private static readonly Vector2[] FogRange = { new Vector2(45f, 140f), new Vector2(70f, 230f), new Vector2(90f, 320f) };
+        private static readonly Vector2[] FogRange = { new Vector2(45f, 140f), new Vector2(70f, 230f), new Vector2(90f, 320f), new Vector2(70f, 230f) };
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()

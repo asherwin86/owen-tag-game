@@ -43,6 +43,8 @@ namespace TagGame.Gameplay
         }
 
         public float Yaw => _yaw;
+        /// <summary>Points the camera's orbit (planes keep the camera behind them).</summary>
+        public void ForceYaw(float yaw) { _yaw = Mathf.LerpAngle(_yaw, yaw, 0.1f); }
 
         private void LateUpdate()
         {

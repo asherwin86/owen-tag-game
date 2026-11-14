@@ -14,7 +14,7 @@ namespace TagGame.Juice
     {
         private class Gem { public Transform t; public Vector3 home; public float backAt; }
 
-        private static readonly int[] PerMap = { 3, 10, 14 };
+        private static readonly int[] PerMap = { 3, 10, 14, 0 };
         private readonly List<Gem> _gems = new List<Gem>();
         private PlayerController _player;
         private Material _mat;
