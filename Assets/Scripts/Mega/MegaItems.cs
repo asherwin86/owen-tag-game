@@ -107,7 +107,6 @@ namespace TagGame.Mega
         /// <summary>Puts an item on every item spot of the Mega City.</summary>
         public static void Populate()
         {
-            ClearAll();
             foreach (var p in MegaWorld.ItemSpots) Spawn(RandomType(), p, true);
         }
 
@@ -120,7 +119,7 @@ namespace TagGame.Mega
             _root = null;
         }
 
-        private static long Key(int cx, int cz) => ((long)(cx + 1000) << 20) | (long)(cz + 1000);
+        private static long Key(int cx, int cz) => ((long)(cx + 100000) << 24) | (long)(cz + 100000);
         private static long KeyOf(Vector3 p) => Key(Mathf.FloorToInt(p.x / HashCell), Mathf.FloorToInt(p.z / HashCell));
 
         public static FloorItem Spawn(ItemType type, Vector3 pos, bool respawn)
@@ -210,6 +209,29 @@ namespace TagGame.Mega
                 if (it.Vis != null) Object.Destroy(it.Vis.gameObject);
                 All.Remove(it);
                 if (_hash.TryGetValue(it.Cell, out var list)) list.Remove(it);
+            }
+        }
+
+        /// <summary>Removes an item for good (its chunk of the world was unloaded).</summary>
+        public static void Remove(FloorItem it)
+        {
+            if (it == null) return;
+            if (it.Vis != null) Object.Destroy(it.Vis.gameObject);
+            All.Remove(it);
+            if (_hash.TryGetValue(it.Cell, out var list)) list.Remove(it);
+        }
+
+        /// <summary>The world's origin moved: move every item with it and re-bucket them.</summary>
+        public static void Shift(Vector3 d)
+        {
+            _hash.Clear();
+            foreach (var it in All)
+            {
+                it.Pos -= d;
+                if (it.Vis != null) it.Vis.position -= d;
+                it.Cell = KeyOf(it.Pos);
+                if (!_hash.TryGetValue(it.Cell, out var list)) { list = new List<FloorItem>(); _hash[it.Cell] = list; }
+                list.Add(it);
             }
         }
 

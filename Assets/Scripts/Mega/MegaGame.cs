@@ -14,6 +14,7 @@ namespace TagGame.Mega
         public int Id, ColorIdx;
         public string Name;
         public bool IsPlayer;
+        public bool Away;              // flying in a plane: can't tag or be tagged, and earns no safe time
         public Vector3 Pos;            // feet
         public float Yaw;
         public bool It;
@@ -49,9 +50,10 @@ namespace TagGame.Mega
         public static MegaGame I { get; private set; }
         public static bool Active => I != null && I.Running;
 
-        public const float RoundSeconds = 300f;
-        public static readonly int[] BotChoices = { 0, 500, 2500, 10000, 100000, 1000000 };   // 0 = Auto
-        private const int AutoStart = 150, AutoMax = 10000;
+        public const float RoundSeconds = 600f;
+        public const int MaxIts = 100;   // never more than 100 taggers at once, even with a million players
+        public static readonly int[] BotChoices = { 0, 1000, 10000, 100000, 1000000 };   // 0 = Auto (10,000 with a self-adjusting zone around you)
+        private const int AutoStart = 10000, AutoMax = 10000;
         private const float FreezeSeconds = 1.5f, NoBackSeconds = 3.5f, KnockSeconds = 4f, TieSeconds = 1.5f;
         private const float BotSpeed = 5.6f, SprintMul = 1.6f, UntiedMul = 0.45f, SneakerMul = 1.25f;
         private static readonly string[] FirstNames = { "Mia", "Leo", "Ava", "Max", "Zoe", "Sam", "Ivy", "Jay", "Kai", "Lily", "Noah", "Ella", "Finn", "Ruby", "Theo", "Isla", "Ben", "Cleo", "Eli", "Nina", "Owen", "Rosa", "Tom", "Uma", "Vic", "Wes", "Yara", "Zac", "Amy", "Ray" };
@@ -97,7 +99,7 @@ namespace TagGame.Mega
         private float _drawDist = 170f;
         private PlayerController _player;
         private MegaPlayer _mp;
-        private MapGrid _grid;
+        private IWalk _grid;
         private float _countdownUntil, _elapsed;
         private int _lastCount, _lastBeep = 99, _nextId, _frame;
         private int _pathBudget, _losBudget;
@@ -119,6 +121,7 @@ namespace TagGame.Mega
             var go = new GameObject("MegaGame");
             go.AddComponent<MegaGame>();
             go.AddComponent<MegaHud>();
+            go.AddComponent<WorldTravel>();
         }
 
         private void Awake()
@@ -165,6 +168,8 @@ namespace TagGame.Mega
 
         // ================================================================== round flow
 
+        public int StartCountry { get; set; }
+
         public void Begin()
         {
             EnsureMaterials();
@@ -172,9 +177,20 @@ namespace TagGame.Mega
             Paused = false; Finished = false;
             ClearAgents();
             Feed.Clear();
-            if (MapManager.I != null && MapManager.I.Current != MapManager.MegaId) MapManager.I.Load(MapManager.MegaId);
-            _grid = MapManager.I != null ? MapManager.I.Grid : null;
-            MegaItems.Populate();
+            MegaItems.ClearAll();
+
+            // the World: put the starting country's airport near the scene origin, then build around it
+            var c = MegaWorld.Countries[Mathf.Clamp(StartCountry, 0, MegaWorld.Countries.Length - 1)];
+            Vector2 ap = c.Airports[c.Airports.Count / 2];
+            MegaWorld.OriginX = c.CX + System.Math.Round((ap.x + 250.0) / 500.0) * 500.0;
+            MegaWorld.OriginZ = c.CZ + System.Math.Round(ap.y / 500.0) * 500.0;
+            MegaWorld.CurrentCountry = System.Array.IndexOf(MegaWorld.Countries, c);
+            if (MapManager.I != null) { if (MapManager.I.Current == MapManager.MegaId) MapManager.I.Load(0); MapManager.I.Load(MapManager.MegaId); }
+            Vector3 guess = MegaWorld.ToLocal(c.CX + ap.x + 250.0, c.CZ + ap.y + 222.0, 1.1f);
+            MegaWorld.Spawn = guess;
+            if (WorldStream.I != null) { WorldStream.I.Focus = () => _player != null ? _player.transform.position : Vector3.zero; WorldStream.I.BuildNowAround(guess); }
+            _grid = MegaWorld.Walk;
+            MegaWorld.OnShift -= OnShift; MegaWorld.OnShift += OnShift;
 
             _player.ResetForNewRound();
             _player.TeleportTo(MegaWorld.Spawn, Quaternion.identity);
@@ -187,20 +203,17 @@ namespace TagGame.Mega
             _agents.Add(Me);
 
             var cam = Camera.main;
-            if (cam != null) { if (_savedFar < 0f) _savedFar = cam.farClipPlane; cam.farClipPlane = 420f; }
+            if (cam != null) { if (_savedFar < 0f) _savedFar = cam.farClipPlane; cam.farClipPlane = 2500f; }
 
             int want = AutoBots ? AutoStart : BotChoices[BotChoice];
-            CrowdMode = !AutoBots && want > CrowdAbove;
-            if (CrowdMode)
-            {
-                _activeCap = 2000;
-                for (int i = 0; i < _activeCap; i++) AddBot(true);
-                int rest = want - _activeCap;
-                _crowd.Init(rest, rest / 30, _nextId);
-                _nextId += rest;
-            }
-            else for (int i = 0; i < want; i++) AddBot(true);
-            // starting ITs: about one per 30 people
+            CrowdMode = true;
+            _activeCap = Mathf.Min(2000, want);
+            for (int i = 0; i < _activeCap; i++) AddBot(true);
+            int rest = want - _activeCap;
+            _crowd.Init(rest, 0, _nextId, 0, 0, 1000f);
+            RegionFor(MegaWorld.CurrentCountry, Me.Pos, true);
+            _nextId += rest;
+            // starting ITs: about one per 30 people, but never more than 100 in all
             int its = ItTarget();
             var pool = new List<Agent>(_agents);
             for (int i = 0; i < its && pool.Count > 0; i++)
@@ -209,16 +222,73 @@ namespace TagGame.Mega
                 SetIt(pool[k], true);
                 pool.RemoveAt(k);
             }
+            _crowd.SetIts(Mathf.Max(0, TotalItTarget - _its.Count));
             _elapsed = 0f;
             TimeLeft = RoundSeconds;
             _countdownUntil = Time.time + 3f;
             _lastCount = 4; _lastBeep = 99;
             _adjustAt = Time.unscaledTime + 5f; _fpsT = 0f; _fpsFrames = 0f;
             Running = true;
-            AddFeed("Mega Mode: " + TotalPlayers.ToString("N0") + " players, " + ItCount.ToString("N0") + " IT");
+            AddFeed("Welcome to " + c.Name + "!  " + TotalPlayers.ToString("N0") + " players, " + ItCount.ToString("N0") + " IT");
+            AddFeed("Planes at the airport fly you to other countries (E)");
         }
 
-        private int ItTarget() => Mathf.Max(1, Mathf.RoundToInt(_agents.Count / 30f));
+        private int TotalItTarget => Mathf.Clamp(Mathf.RoundToInt(TotalPlayers / 30f), 1, MaxIts);
+
+        /// <summary>Where the crowd lives: the whole city, or 10 km around you in the Super Mega World.</summary>
+        private void RegionFor(int country, Vector3 near, bool force)
+        {
+            if (country < 0) return;
+            var c = MegaWorld.Countries[country];
+            // the crowd's area: big enough for everyone, but not so big that the streets around you are empty
+            float rh = Mathf.Min(c.Half, Mathf.Max(1500f, Mathf.Sqrt(Mathf.Max(1, TotalPlayers)) * 25f));
+            rh = Mathf.Round(rh / 100f) * 100f;
+            double rcx = c.CX, rcz = c.CZ;
+            if (rh < c.Half - 1f)
+            {
+                double wx = MegaWorld.WX(near.x), wz = MegaWorld.WZ(near.z);
+                rcx = System.Math.Round(System.Math.Max(c.CX - c.Half + rh, System.Math.Min(c.CX + c.Half - rh, wx)) / 100.0) * 100.0;
+                rcz = System.Math.Round(System.Math.Max(c.CZ - c.Half + rh, System.Math.Min(c.CZ + c.Half - rh, wz)) / 100.0) * 100.0;
+            }
+            bool same = System.Math.Abs(rcx - _crowd.RCX) < 1 && System.Math.Abs(rcz - _crowd.RCZ) < 1 && System.Math.Abs(rh - _crowd.RH) < 1;
+            if (force || !same) _crowd.Scatter(rcx, rcz, rh);
+        }
+
+        /// <summary>Called when you land in (or walk into) another country, or travel far in the Super Mega World.</summary>
+        public void ArrivedIn(int country)
+        {
+            if (!Running || country < 0) return;
+            bool changed = country != MegaWorld.CurrentCountry;
+            MegaWorld.CurrentCountry = country;
+            var c = MegaWorld.Countries[country];
+            if (changed) { AddFeed("Welcome to " + c.Name + "!"); TagPopup.Show("Welcome to " + c.Name + "!", new Color(0.2f, 0.6f, 0.95f)); }
+            Vector3 rc = new Vector3((float)(_crowd.RCX - MegaWorld.OriginX), 0f, (float)(_crowd.RCZ - MegaWorld.OriginZ));
+            if (changed || Flat(Me.Pos - rc) > _crowd.RH * 0.8f) RegionFor(country, Me.Pos, false);
+        }
+
+        private void OnShift(Vector3 d)
+        {
+            foreach (var a in _agents)
+            {
+                if (a.IsPlayer) continue;
+                a.Pos -= d; a.Goal -= d; a.Detour -= d; a.ProgressPos -= d;
+                if (a.Path != null) for (int i = 0; i < a.Path.Count; i++) a.Path[i] -= d;
+                if (a.Script != null) for (int i = 0; i < a.Script.Count; i++) a.Script[i] -= d;
+                if (a.Proxy != null) a.Proxy.transform.position = a.Pos;
+            }
+            MegaItems.Shift(d);
+            if (_player != null)
+            {
+                if (_player.Controller != null && _player.Controller.enabled) _player.TeleportTo(_player.transform.position - d, _player.transform.rotation);
+                else _player.transform.position -= d;
+                Me.Pos -= d;
+            }
+            var cam = Camera.main;
+            if (cam != null) cam.transform.position -= d;
+            foreach (var t in _tracers) if (t.t != null) t.t.gameObject.SetActive(false);
+        }
+
+        private int ItTarget() => Mathf.Clamp(Mathf.RoundToInt(_agents.Count / 30f), 1, TotalItTarget);
 
         public void Quit()
         {
@@ -234,7 +304,10 @@ namespace TagGame.Mega
             if (cam != null && _savedFar > 0f) cam.farClipPlane = _savedFar;
             MapBlips.It = null;
             TagPopup.SetStatus("");
+            MegaWorld.OnShift -= OnShift;
+            if (WorldTravel.I != null) WorldTravel.I.EndAll();
             if (MapManager.I != null) MapManager.I.LoadSelected();
+            MegaWorld.OriginX = 0; MegaWorld.OriginZ = 0;
             _player.Frozen = false;
             _player.EnterLobby();
         }
@@ -304,7 +377,7 @@ namespace TagGame.Mega
         {
             var a = new Agent { Id = _nextId++, IsPlayer = false, ColorIdx = Random.Range(0, BotColors.Length) };
             a.Name = NameFor(a.Id);
-            a.Pos = CrowdMode ? RandomStreetPoint(40f, ActiveR) : RandomStreetPoint(atStart ? 40f : 90f, atStart ? 700f : 500f);
+            a.Pos = RandomStreetPoint(atStart ? 40f : 150f, ActiveR);
             a.Yaw = Random.Range(0f, 360f);
             a.ThinkAt = Time.time + Random.Range(0f, 0.5f);
             a.Stamina = 4f;
@@ -331,8 +404,16 @@ namespace TagGame.Mega
             RemoveBot(a);
         }
 
+        private float _regionCheckAt;
+
         private void CrowdStep()
         {
+            if (Time.time >= _regionCheckAt && Me != null && !Me.Away)
+            {
+                _regionCheckAt = Time.time + 5f;
+                Vector3 rc = new Vector3((float)(_crowd.RCX - MegaWorld.OriginX), 0f, (float)(_crowd.RCZ - MegaWorld.OriginZ));
+                if (Flat(Me.Pos - rc) > _crowd.RH * 0.7f) RegionFor(MegaWorld.CurrentCountry, Me.Pos, false);
+            }
             _crowd.Tick(50000, Me.Pos, ActiveR, Me.Safe, Promote);
             float lim2 = (ActiveR + 50f) * (ActiveR + 50f);
             for (int n = 0; n < 200 && _agents.Count > 1; n++)
@@ -358,18 +439,19 @@ namespace TagGame.Mega
         private Vector3 RandomStreetPoint(float minFromPlayer, float maxFromPlayer)
         {
             Vector3 c = _player != null ? _player.transform.position : Vector3.zero;
+            int span = Mathf.Max(1, Mathf.CeilToInt(maxFromPlayer / 100f));
             for (int tries = 0; tries < 60; tries++)
             {
                 float x, z;
-                if (Random.value < 0.5f) { x = Street(Random.Range(0, 24)); z = Random.Range(-950f, 950f); }
-                else { z = Street(Random.Range(0, 24)); x = Random.Range(-950f, 950f); }
+                if (Random.value < 0.5f) { x = Street(StreetIdx(c.x) + Random.Range(-span, span + 1)); z = c.z + Random.Range(-maxFromPlayer, maxFromPlayer); }
+                else { z = Street(StreetIdx(c.z) + Random.Range(-span, span + 1)); x = c.x + Random.Range(-maxFromPlayer, maxFromPlayer); }
                 x += Random.Range(-3f, 3f); z += Random.Range(-3f, 3f);
                 float d = Vector2.Distance(new Vector2(x, z), new Vector2(c.x, c.z));
                 if (d < minFromPlayer || d > maxFromPlayer) continue;
                 if (_grid != null && _grid.IsBlocked(x, z)) continue;
                 return new Vector3(x, 0f, z);
             }
-            return new Vector3(Street(Random.Range(0, 24)), 0f, Street(Random.Range(0, 24)));
+            return new Vector3(Street(StreetIdx(c.x)), 0f, c.z + minFromPlayer);
         }
 
         private void RemoveBot(Agent a)
@@ -381,8 +463,8 @@ namespace TagGame.Mega
             a.Removed = true;   // anyone chasing it lets go next time they think
         }
 
-        private static float Street(int k) => -920f + 80f * k;
-        private static int StreetIdx(float v) => Mathf.Clamp(Mathf.RoundToInt((v + 920f) / 80f), 0, 23);
+        private static float Street(int k) => MegaWorld.Street(k);
+        private static int StreetIdx(float v) => MegaWorld.StreetIdx(v);
 
         private void SetIt(Agent a, bool on)
         {
@@ -557,7 +639,7 @@ namespace TagGame.Mega
 
             foreach (var a in _agents)
             {
-                if (!a.It) a.Safe += dt;
+                if (!a.It && !a.Away) a.Safe += dt;
                 if (a.Hp <= 0f && !a.Knocked) { a.Hp = 70f; }   // got back up
                 if (a.Tying && Time.time >= a.TieDoneAt) { a.Tying = false; a.Untied = false; if (a.IsPlayer) { GameAudio.Play("tie", 0.8f); TagPopup.Show("Laces tied!", new Color(0.2f, 0.8f, 0.35f)); } }
             }
@@ -584,8 +666,7 @@ namespace TagGame.Mega
 
             Tagging();
             KeepItCount();
-            if (AutoBots) AdjustBots();
-            else if (CrowdMode) { CrowdStep(); AdjustCap(); }
+            CrowdStep(); AdjustCap();
 
             // status line + the minimap's red ring on the nearest IT
             Agent near = null; float nd = float.MaxValue;
@@ -636,7 +717,7 @@ namespace TagGame.Mega
             _hash.Clear();
             foreach (var a in _agents)
             {
-                if (a.It) continue;
+                if (a.It || a.Away) continue;
                 long k = HKey(Mathf.FloorToInt(a.Pos.x / HCell), Mathf.FloorToInt(a.Pos.z / HCell));
                 if (!_hash.TryGetValue(k, out var list)) { list = _listPool.Count > 0 ? _listPool.Pop() : new List<Agent>(); _hash[k] = list; }
                 list.Add(a);
@@ -645,7 +726,7 @@ namespace TagGame.Mega
             {
                 if (i >= _its.Count) continue;
                 var it = _its[i];
-                if (it.Busy) continue;
+                if (it.Busy || it.Away) continue;
                 int cx = Mathf.FloorToInt(it.Pos.x / HCell), cz = Mathf.FloorToInt(it.Pos.z / HCell);
                 Agent hitA = null;
                 for (int x = cx - 1; x <= cx + 1 && hitA == null; x++)
@@ -678,6 +759,8 @@ namespace TagGame.Mega
                 var a = _its[Random.Range(0, _its.Count)];
                 if (!a.IsPlayer) SetIt(a, false);
             }
+            int crowdWant = Mathf.Max(0, TotalItTarget - _its.Count);
+            if (_crowd.Its != crowdWant) _crowd.SetIts(crowdWant);
         }
 
         private void AdjustBots()
@@ -821,7 +904,7 @@ namespace TagGame.Mega
                 if (pool.Count < 3) pool = _agents.Count > 1500 ? Gather(_coarse, a.Pos, 200f, _tmpB) : _agents;
                 foreach (var o in pool)
                 {
-                    if (o.It || o == a) continue;
+                    if (o.It || o == a || o.Away) continue;
                     if (o == a.NoBackFrom && now < a.NoBackUntil) continue;
                     float d = (o.Pos - a.Pos).sqrMagnitude;
                     if (Mathf.Abs(o.Pos.y - a.Pos.y) > 2f) d *= 3f;      // other floors take longer to reach
@@ -923,8 +1006,7 @@ namespace TagGame.Mega
                 if (x < r.xMin + 0.4f || x > r.xMax - 0.4f || z < r.yMin + 0.4f || z > r.yMax - 0.4f) return false;
                 return !a.Bld.InHole(x, z);
             }
-            if (Mathf.Abs(x) > 995f || Mathf.Abs(z) > 995f) return false;
-            return _grid == null || !_grid.IsBlocked(x, z);
+            return _grid != null && !_grid.IsBlocked(x, z);
         }
 
         private bool FreeAhead(Agent a, Vector3 dir, float dist)

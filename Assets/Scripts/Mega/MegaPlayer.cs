@@ -88,6 +88,7 @@ namespace TagGame.Mega
             }
             if (Time.frameCount - TouchSlotFrame <= 1) SelectSlot((Selected + 1) % 4);
 
+            if (WorldTravel.I != null && WorldTravel.I.InPlane) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
             float now = Time.time, dt = Time.deltaTime;
             bool frozen = g.CountingDown || _me.Knocked || now < _me.FrozenUntil || _me.Tying;
             _pc.Frozen = frozen;
@@ -112,7 +113,15 @@ namespace TagGame.Mega
                 else if (!tieHeld && _me.Tying) _me.Tying = false;
             }
             TieProgress = _me.Tying ? Mathf.Clamp01(1f - (_me.TieDoneAt - now) / 1.5f) : 0f;
-            _pc.ExternalSpeed = (_me.Untied ? 0.45f : 1f) * (SneakersOn ? 1.25f : 1f);
+            // wading in a lake: slow, and step up onto the shore when you walk into it
+            bool wading = _me.Pos.y < -1.2f;
+            if (wading && _pc.Controller != null && _pc.Controller.velocity.sqrMagnitude > 0.5f)
+            {
+                Vector3 ahead = transform.position + transform.forward * 1.3f;
+                if (Physics.Raycast(new Vector3(ahead.x, 3f, ahead.z), Vector3.down, out var gh, 6f, ~0, QueryTriggerInteraction.Ignore) && gh.point.y > -0.3f && gh.collider.gameObject != gameObject)
+                    _pc.TeleportTo(new Vector3(ahead.x, gh.point.y + 1.1f, ahead.z), transform.rotation);
+            }
+            _pc.ExternalSpeed = (_me.Untied ? 0.45f : 1f) * (SneakersOn ? 1.25f : 1f) * (wading ? 0.55f : 1f);
             _pc.SprintBlocked = _me.Untied;
             if (SneakersOn && !_me.Untied) _pc.Boost(1f, 0.1f);
 

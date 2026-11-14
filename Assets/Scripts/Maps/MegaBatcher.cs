@@ -51,7 +51,7 @@ namespace TagGame.Maps
         }
 
         /// <summary>A box from y0 up to y0+h centred on (cx, cz). Blocks the bots' walk grid when it stands on the ground.</summary>
-        public void Box(float cx, float y0, float cz, float sx, float h, float sz, Material side, Material top, bool collide = true, bool bottom = false, float tileU = 4f, float tileV = 3.5f)
+        public void Box(float cx, float y0, float cz, float sx, float h, float sz, Material side, Material top, bool collide = true, bool bottom = false, float tileU = 4f, float tileV = 3.5f, bool gridBlock = true)
         {
             if (sx <= 0.01f || sz <= 0.01f || h <= 0.001f) return;
             int kx = CK(cx), kz = CK(cz);
@@ -91,8 +91,9 @@ namespace TagGame.Maps
         }
 
         /// <summary>Turns everything added so far into meshes.</summary>
-        public void Flush(bool shadows)
+        public List<Mesh> Flush(bool shadows)
         {
+            var made = new List<Mesh>();
             foreach (var kv in _parts)
             {
                 var p = kv.Value;
@@ -103,14 +104,16 @@ namespace TagGame.Maps
                 if (p.v.Count > 65000) mesh.indexFormat = IndexFormat.UInt32;
                 mesh.SetVertices(p.v); mesh.SetNormals(p.n); mesh.SetUVs(0, p.uv); mesh.SetTriangles(p.t, 0);
                 mesh.RecalculateBounds();
+                made.Add(mesh);
                 go.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var mr = go.AddComponent<MeshRenderer>();
                 mr.sharedMaterial = _partMat[kv.Key];
                 mr.shadowCastingMode = shadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
-                mr.receiveShadows = false;
+                mr.receiveShadows = true;
             }
             _parts.Clear();
             _partMat.Clear();
+            return made;
         }
     }
 }

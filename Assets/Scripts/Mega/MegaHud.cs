@@ -27,7 +27,7 @@ namespace TagGame.Mega
     {
         private GameFlowUI _flow;
         private GameObject _canvas, _setup, _hud, _pause, _results, _loading, _touch;
-        private Button[] _botButtons;
+        private Button[] _botButtons, _countryButtons;
         private Image _hpFill, _armFill, _flash, _tieFill, _reticle;
         private TMP_Text _hpText, _timer, _rank, _feed, _prompt, _laces, _resultText, _info;
         private readonly Image[] _slotBg = new Image[4];
@@ -77,21 +77,29 @@ namespace TagGame.Mega
             var s = _setup.transform;
             var title = MG.MakeText(s, "MEGA MODE", 92, MG.C, new Vector2(0f, 360f), new Vector2(1200f, 120f));
             title.color = new Color(1f, 0.6f, 0.15f); title.fontStyle = FontStyles.Bold;
-            MG.MakeText(s, "A 2 km city with 5 schools, a mall, towers with stairs and elevators, and a crowd of players.\nGrab guns, medkits, armour, energy drinks and super sneakers off the floor. Don't let your laces come untied!", 28, MG.C, new Vector2(0f, 250f), new Vector2(1500f, 100f)).color = new Color(0.85f, 0.88f, 0.92f);
-            MG.MakeText(s, "BOTS", 34, MG.C, new Vector2(0f, 150f), new Vector2(600f, 50f)).fontStyle = FontStyles.Bold;
+            MG.MakeText(s, "A world of walled island countries: Mega City, Harbor City and Sky City (10 km each) and the 100 km Super Mega World.\nSchools, malls, towers with stairs and elevators, lakes, forests and airports - fly planes between countries. Up to 100 taggers at once.", 26, MG.C, new Vector2(0f, 262f), new Vector2(1600f, 90f)).color = new Color(0.85f, 0.88f, 0.92f);
+            MG.MakeText(s, "PLAYERS", 30, MG.C, new Vector2(0f, 190f), new Vector2(600f, 44f)).fontStyle = FontStyles.Bold;
             _botButtons = new Button[MegaGame.BotChoices.Length];
             for (int i = 0; i < _botButtons.Length; i++)
             {
                 int id = i;
-                string label = MegaGame.BotChoices[i] == 0 ? "Auto" : MegaGame.BotChoices[i].ToString("N0");
-                _botButtons[i] = MG.MakeButton(s, label, MG.C, new Vector2((i - (_botButtons.Length - 1) * 0.5f) * 190f, 70f), new Vector2(170f, 80f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.SetBotChoice(id); RefreshBots(); }, 32);
+                string label = MegaGame.BotChoices[i] == 0 ? "Auto" : (MegaGame.BotChoices[i] >= 1000000 ? "1 MILLION" : MegaGame.BotChoices[i].ToString("N0"));
+                _botButtons[i] = MG.MakeButton(s, label, MG.C, new Vector2((i - (_botButtons.Length - 1) * 0.5f) * 230f, 125f), new Vector2(210f, 70f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.SetBotChoice(id); RefreshBots(); }, 30);
             }
-            _info = MG.MakeText(s, "", 24, MG.C, new Vector2(0f, -5f), new Vector2(1200f, 40f));
+            _info = MG.MakeText(s, "", 22, MG.C, new Vector2(0f, 72f), new Vector2(1500f, 36f));
             _info.color = new Color(0.75f, 0.8f, 0.85f);
-            MG.MakeText(s, "<b>Controls</b>   WASD move · Shift sprint · Ctrl/Q dash · <b>1-4</b> slots · <b>Click / F</b> fire or use · <b>E</b> vending, lockers, swap · <b>T</b> hold to tie laces · Esc pause\nController: RB fire · B use · hold Y tie laces (tap Y next slot) · D-pad slots",
-                22, MG.C, new Vector2(0f, -95f), new Vector2(1600f, 90f)).color = new Color(0.7f, 0.75f, 0.8f);
-            MG.MakeButton(s, "START", MG.C, new Vector2(0f, -220f), new Vector2(380f, 96f), new Color(0.15f, 0.6f, 0.3f), StartGame, 46);
-            MG.MakeButton(s, "Back", MG.C, new Vector2(0f, -330f), new Vector2(240f, 60f), new Color(0.5f, 0.2f, 0.2f), CloseSetup, 28);
+            MG.MakeText(s, "START IN", 30, MG.C, new Vector2(0f, 22f), new Vector2(600f, 44f)).fontStyle = FontStyles.Bold;
+            _countryButtons = new Button[MegaWorld.Countries.Length];
+            for (int i = 0; i < _countryButtons.Length; i++)
+            {
+                int id = i;
+                var c = MegaWorld.Countries[i];
+                _countryButtons[i] = MG.MakeButton(s, c.Name + "\n<size=18>" + (c.Half * 2f / 1000f).ToString("0") + " km</size>", MG.C, new Vector2((i - (_countryButtons.Length - 1) * 0.5f) * 300f, -45f), new Vector2(280f, 80f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.StartCountry = id; RefreshBots(); }, 26);
+            }
+            MG.MakeText(s, "<b>Controls</b>   WASD move · Shift sprint · Ctrl/Q dash · <b>1-4</b> slots · <b>Click / F</b> fire or use · <b>E</b> vending, lockers, swap, planes · <b>T</b> hold to tie laces · Esc pause\nPlanes: Shift/Ctrl power · W/S nose · A/D turn · E get out.  Controller: RB fire · B use · hold Y tie laces · D-pad slots · RT/LT power",
+                20, MG.C, new Vector2(0f, -140f), new Vector2(1700f, 80f)).color = new Color(0.7f, 0.75f, 0.8f);
+            MG.MakeButton(s, "START", MG.C, new Vector2(0f, -250f), new Vector2(380f, 96f), new Color(0.15f, 0.6f, 0.3f), StartGame, 46);
+            MG.MakeButton(s, "Back", MG.C, new Vector2(0f, -355f), new Vector2(240f, 60f), new Color(0.5f, 0.2f, 0.2f), CloseSetup, 28);
             _setup.SetActive(false);
 
             _loading = MG.MakePanel(root, "MegaLoading", new Color(0.04f, 0.05f, 0.08f, 0.96f));
@@ -217,9 +225,12 @@ namespace TagGame.Mega
             int sel = MegaGame.I.BotChoice;
             for (int i = 0; i < _botButtons.Length; i++)
                 _botButtons[i].GetComponent<Image>().color = i == sel ? new Color(0.95f, 0.5f, 0.1f) : new Color(0.2f, 0.2f, 0.28f);
-            _info.text = MegaGame.BotChoices[sel] == 0
-                ? "Auto: starts with 150 bots and keeps adding more while your computer stays smooth (up to 10,000)"
-                : MegaGame.BotChoices[sel].ToString("N0") + " bots" + (MegaGame.BotChoices[sel] > 10000 ? "  -  the ~2,000 nearest are full bots around you, the rest roam the city as the crowd" : (MegaGame.BotChoices[sel] >= 10000 ? "  (pushes your computer to the limit!)" : ""));
+            for (int i = 0; i < _countryButtons.Length; i++)
+                _countryButtons[i].GetComponent<Image>().color = i == MegaGame.I.StartCountry ? new Color(0.2f, 0.5f, 0.9f) : new Color(0.2f, 0.2f, 0.28f);
+            int n = MegaGame.BotChoices[sel];
+            _info.text = n == 0
+                ? "Auto: 10,000 players. The zone of full bots around you grows or shrinks to keep the game smooth"
+                : n.ToString("N0") + " players - the nearest (up to ~2,000) are full bots around you, the rest roam the country as the crowd";
         }
 
         private void StartGame() { StartCoroutine(StartRoutine()); }

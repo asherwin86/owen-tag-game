@@ -22,7 +22,89 @@ namespace TagGame.Mega
             public readonly List<Vector3> Escalators = new List<Vector3>();
             public bool InHole(float x, float z) { foreach (var h in Holes) if (h.Contains(new Vector2(x, z))) return true; return false; }
             public bool Contains(Vector3 p) => Area.Contains(new Vector2(p.x, p.z));
+            public void Shift(Vector3 d)
+            {
+                Area.position -= new Vector2(d.x, d.z);
+                Door -= Flat(d); StairBase -= Flat(d); StairTop -= Flat(d);
+                RampX -= d.x; RampZ0 -= d.z; RampZ1 -= d.z; SideX -= d.x;
+                for (int i = 0; i < Holes.Count; i++) { var h = Holes[i]; h.position -= new Vector2(d.x, d.z); Holes[i] = h; }
+                for (int i = 0; i < Escalators.Count; i++) Escalators[i] -= Flat(d);
+            }
+            private static Vector3 Flat(Vector3 d) => new Vector3(d.x, 0f, d.z);
         }
+
+        // ------------------------------------------------------------------ the world: countries and the floating origin
+
+        /// <summary>A country: a walled city on its own island. Streets sit on every 100 m line of the world grid.</summary>
+        public class Country
+        {
+            public string Name;
+            public double CX, CZ;         // world centre (multiple of 500)
+            public float Half;            // half size in metres (multiple of 500)
+            public uint Seed;
+            public int Style;             // 0 Mega City, 1 Harbor City, 2 Sky City, 3 Super Mega World
+            public readonly List<Vector2> Airports = new List<Vector2>();   // runway centres, world coords relative to CX/CZ
+            public bool Contains(double x, double z) => System.Math.Abs(x - CX) < Half && System.Math.Abs(z - CZ) < Half;
+        }
+
+        public static readonly Country[] Countries = MakeCountries();
+
+        private static Country[] MakeCountries()
+        {
+            var c = new[]
+            {
+                new Country { Name = "Mega City",        CX = 0,      CZ = 0,     Half = 5000f,  Seed = 1101, Style = 0 },
+                new Country { Name = "Harbor City",      CX = 24000,  CZ = 0,     Half = 5000f,  Seed = 2202, Style = 1 },
+                new Country { Name = "Sky City",         CX = 12000,  CZ = 21000, Half = 5000f,  Seed = 3303, Style = 2 },
+                new Country { Name = "Super Mega World", CX = -80000, CZ = 0,     Half = 50000f, Seed = 4404, Style = 3 },
+            };
+            // airports: runway along x, centred on these spots (one for each city, a grid of them in the Super Mega World)
+            for (int i = 0; i < 3; i++) c[i].Airports.Add(new Vector2(0f, -2250f));
+            for (int ax = -2; ax <= 2; ax++)
+                for (int az = -2; az <= 2; az++)
+                    c[3].Airports.Add(new Vector2(ax * 20000f, az * 20000f - 2250f));
+            return c;
+        }
+
+        public const float Pitch = 100f, BlockSize = 80f, ChunkSize = 500f;
+        public const float SeaLevel = -1.5f;
+
+        /// <summary>World position of the scene's (0,0,0). Moves in 500 m steps so far-away places stay precise.</summary>
+        public static double OriginX, OriginZ;
+        /// <summary>Raised after the origin moves by delta: everything in the scene was moved by -delta.</summary>
+        public static event System.Action<Vector3> OnShift;
+        public static int CurrentCountry;
+
+        public static Vector3 ToLocal(double x, double z, float y = 0f) => new Vector3((float)(x - OriginX), y, (float)(z - OriginZ));
+        public static double WX(float localX) => localX + OriginX;
+        public static double WZ(float localZ) => localZ + OriginZ;
+
+        public static int CountryAt(double x, double z)
+        {
+            for (int i = 0; i < Countries.Length; i++) if (Countries[i].Contains(x, z)) return i;
+            return -1;
+        }
+        public static int CountryAtLocal(Vector3 p) => CountryAt(WX(p.x), WZ(p.z));
+
+        /// <summary>Moves the origin so that local point p becomes (about) the new centre.</summary>
+        public static void ShiftOrigin(Vector3 p)
+        {
+            float dx = Mathf.Round(p.x / ChunkSize) * ChunkSize, dz = Mathf.Round(p.z / ChunkSize) * ChunkSize;
+            if (dx == 0f && dz == 0f) return;
+            var d = new Vector3(dx, 0f, dz);
+            OriginX += dx; OriginZ += dz;
+            foreach (var b in Buildings) b.Shift(d);
+            for (int i = 0; i < ItemSpots.Count; i++) ItemSpots[i] -= d;
+            Spawn -= d;
+            OnShift?.Invoke(d);
+        }
+
+        /// <summary>Streets run along every 100 m line (in local coordinates too, since the origin moves in 500 m steps).</summary>
+        public static float Street(int k) => Pitch * k;
+        public static int StreetIdx(float v) => Mathf.RoundToInt(v / Pitch);
+
+        /// <summary>Where bots can walk (set by the world streamer).</summary>
+        public static TagGame.Maps.IWalk Walk;
 
         public static readonly List<Building> Buildings = new List<Building>();
         public static readonly List<Vector3> ItemSpots = new List<Vector3>();

@@ -161,7 +161,7 @@ namespace TagGame.Maps
 
         private Transform Root()
         {
-            if (_root == null) _root = new GameObject(Current == MegaId ? "Map_MegaCity" : "Map_" + Names[Mathf.Clamp(Current, 0, Count - 1)]).transform;
+            if (_root == null) _root = new GameObject(Current == MegaId ? "Map_World" : "Map_" + Names[Mathf.Clamp(Current, 0, Count - 1)]).transform;
             return _root;
         }
 
