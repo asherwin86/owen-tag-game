@@ -26,6 +26,7 @@ namespace TagGame.Juice
         private bool _on;
         private float _savedShadowDist = 90f; private int _savedCascades = 1;
         private LensFlareComponentSRP _flare;
+        private AmbientMode _ambMode; private Color _ambSky, _ambEq, _ambGround;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
@@ -77,11 +78,11 @@ namespace TagGame.Juice
             if (_sun != null)
             {
                 _sunRot = _sun.transform.rotation; _sunInt = _sun.intensity; _sunCol = _sun.color;
-                _sun.transform.rotation = Quaternion.Euler(24f, 215f, 0f);     // low afternoon sun: long shadows
+                _sun.transform.rotation = Quaternion.Euler(36f, 215f, 0f);     // afternoon sun: long shadows
                 _sun.intensity = 1.55f;
                 _sun.color = new Color(1f, 0.93f, 0.8f);
                 _sun.shadows = LightShadows.Soft;
-                _sun.shadowStrength = 0.85f;
+                _sun.shadowStrength = 0.72f;
                 RenderSettings.sun = _sun;
                 try
                 {
@@ -110,6 +111,12 @@ namespace TagGame.Juice
                 if (_skyMat.HasProperty("_Exposure")) _skyMat.SetFloat("_Exposure", 1.35f);
                 if (_skyMat.HasProperty("_SkyTint")) _skyMat.SetColor("_SkyTint", new Color(0.45f, 0.55f, 0.75f));
             }
+            // bright, warm fill light so shadows stay readable instead of going dark blue
+            _ambMode = RenderSettings.ambientMode; _ambSky = RenderSettings.ambientSkyColor; _ambEq = RenderSettings.ambientEquatorColor; _ambGround = RenderSettings.ambientGroundColor;
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.66f, 0.74f, 0.88f);
+            RenderSettings.ambientEquatorColor = new Color(0.62f, 0.6f, 0.56f);
+            RenderSettings.ambientGroundColor = new Color(0.4f, 0.37f, 0.33f);
             DynamicGI.UpdateEnvironment();
 
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
@@ -193,6 +200,7 @@ namespace TagGame.Juice
             _on = false;
             if (_sun != null) { _sun.transform.rotation = _sunRot; _sun.intensity = _sunInt; _sun.color = _sunCol; }
             if (_flare != null) _flare.enabled = false;
+            RenderSettings.ambientMode = _ambMode; RenderSettings.ambientSkyColor = _ambSky; RenderSettings.ambientEquatorColor = _ambEq; RenderSettings.ambientGroundColor = _ambGround;
             if (_skyMat != null && _skyMat.HasProperty("_SunSize"))
             {
                 _skyMat.SetFloat("_SunSize", _skySize);

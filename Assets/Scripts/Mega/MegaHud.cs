@@ -135,7 +135,7 @@ namespace TagGame.Mega
 
             _timer = MG.MakeText(h, "", 44, MG.T, new Vector2(0f, -150f), new Vector2(400f, 60f));
             _timer.fontStyle = FontStyles.Bold;
-            _rank = MG.MakeText(h, "", 24, new Vector2(1f, 1f), new Vector2(-24f, -330f), new Vector2(460f, 90f));
+            _rank = MG.MakeText(h, "", 24, new Vector2(1f, 1f), new Vector2(-24f, -400f), new Vector2(460f, 110f));
             ((RectTransform)_rank.transform).pivot = new Vector2(1f, 1f);
             _rank.alignment = TextAlignmentOptions.TopRight;
             _feed = MG.MakeText(h, "", 20, new Vector2(1f, 0.5f), new Vector2(-24f, -40f), new Vector2(520f, 220f));
