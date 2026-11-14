@@ -50,7 +50,7 @@ namespace TagGame.Mega
         public static bool Active => I != null && I.Running;
 
         public const float RoundSeconds = 300f;
-        public static readonly int[] BotChoices = { 0, 100, 500, 1000, 2500, 5000, 10000 };   // 0 = Auto
+        public static readonly int[] BotChoices = { 0, 500, 2500, 10000, 100000, 1000000 };   // 0 = Auto
         private const int AutoStart = 150, AutoMax = 10000;
         private const float FreezeSeconds = 1.5f, NoBackSeconds = 3.5f, KnockSeconds = 4f, TieSeconds = 1.5f;
         private const float BotSpeed = 5.6f, SprintMul = 1.6f, UntiedMul = 0.45f, SneakerMul = 1.25f;
@@ -68,7 +68,15 @@ namespace TagGame.Mega
         public bool CountingDown => Running && Time.time < _countdownUntil;
         public int BotChoice { get; private set; }               // index into BotChoices
         public bool AutoBots => BotChoices[BotChoice] == 0;
-        public int BotCount => _agents.Count - 1;
+        public int BotCount => _agents.Count - 1 + _crowd.Count;
+        /// <summary>Bots near you that are fully simulated and drawn (the rest are the far-away crowd).</summary>
+        public int NearbyCount => _agents.Count - 1;
+        public int TotalPlayers => _agents.Count + _crowd.Count;
+        public bool CrowdMode { get; private set; }
+        private readonly MegaCrowd _crowd = new MegaCrowd();
+        private int _activeCap = 2000, _demoteCursor;
+        private const float ActiveR = 230f;
+        private const int CrowdAbove = 10000;   // more bots than this: the far ones become the crowd
         public float Fps { get; private set; } = 60f;
         public string ResultText { get; private set; } = "";
         public Agent Me { get; private set; }
@@ -182,7 +190,16 @@ namespace TagGame.Mega
             if (cam != null) { if (_savedFar < 0f) _savedFar = cam.farClipPlane; cam.farClipPlane = 420f; }
 
             int want = AutoBots ? AutoStart : BotChoices[BotChoice];
-            for (int i = 0; i < want; i++) AddBot(true);
+            CrowdMode = !AutoBots && want > CrowdAbove;
+            if (CrowdMode)
+            {
+                _activeCap = 2000;
+                for (int i = 0; i < _activeCap; i++) AddBot(true);
+                int rest = want - _activeCap;
+                _crowd.Init(rest, rest / 30, _nextId);
+                _nextId += rest;
+            }
+            else for (int i = 0; i < want; i++) AddBot(true);
             // starting ITs: about one per 30 people
             int its = ItTarget();
             var pool = new List<Agent>(_agents);
@@ -198,7 +215,7 @@ namespace TagGame.Mega
             _lastCount = 4; _lastBeep = 99;
             _adjustAt = Time.unscaledTime + 5f; _fpsT = 0f; _fpsFrames = 0f;
             Running = true;
-            AddFeed("Mega Mode: " + _agents.Count + " players, " + its + " IT");
+            AddFeed("Mega Mode: " + TotalPlayers.ToString("N0") + " players, " + ItCount.ToString("N0") + " IT");
         }
 
         private int ItTarget() => Mathf.Max(1, Mathf.RoundToInt(_agents.Count / 30f));
@@ -234,6 +251,8 @@ namespace TagGame.Mega
             foreach (var a in _agents) if (a.Proxy != null) Destroy(a.Proxy);
             _agents.Clear();
             _its.Clear();
+            _crowd.Clear();
+            CrowdMode = false;
             Me = null;
         }
 
@@ -243,10 +262,17 @@ namespace TagGame.Mega
             GameAudio.Play("buzzer");
             var rows = new List<Agent>(_agents);
             rows.Sort((a, b) => b.Safe.CompareTo(a.Safe));
-            int rank = rows.IndexOf(Me) + 1;
+            int rank = rows.IndexOf(Me) + 1 + (CrowdMode ? _crowd.RankAbove : 0);
+            if (CrowdMode)
+            {
+                var top = new List<MegaCrowd.KeyValuePair>();
+                _crowd.Top(5, top);
+                foreach (var t in top) rows.Add(new Agent { Id = t.Id, Name = NameFor(t.Id), Safe = t.Safe });
+                rows.Sort((a, b) => b.Safe.CompareTo(a.Safe));
+            }
             var sb = new StringBuilder();
             sb.Append(rank == 1 ? "<color=#FFD84A>YOU WIN MEGA MODE!</color>" : "Time's up!");
-            sb.Append("\nYou were safe ").Append(Mathf.FloorToInt(Me.Safe)).Append("s - place ").Append(rank).Append(" of ").Append(rows.Count);
+            sb.Append("\nYou were safe ").Append(Mathf.FloorToInt(Me.Safe)).Append("s - place ").Append(rank).Append(" of ").Append(TotalPlayers.ToString("N0"));
             sb.Append("\n\n");
             for (int i = 0; i < Mathf.Min(5, rows.Count); i++)
                 sb.Append(i + 1).Append(". ").Append(rows[i].Name).Append("  ").Append(Mathf.FloorToInt(rows[i].Safe)).Append("s\n");
@@ -260,10 +286,11 @@ namespace TagGame.Mega
             if (Me == null) return 0;
             int r = 1;
             foreach (var a in _agents) if (a != Me && a.Safe > Me.Safe) r++;
+            if (CrowdMode) r += _crowd.RankAbove;
             return r;
         }
 
-        public int ItCount => _its.Count;
+        public int ItCount => _its.Count + _crowd.Its;
 
         public void AddFeed(string s)
         {
@@ -276,12 +303,56 @@ namespace TagGame.Mega
         private void AddBot(bool atStart)
         {
             var a = new Agent { Id = _nextId++, IsPlayer = false, ColorIdx = Random.Range(0, BotColors.Length) };
-            a.Name = FirstNames[a.Id % FirstNames.Length] + (a.Id >= FirstNames.Length ? " " + (a.Id / FirstNames.Length + 1) : "");
-            a.Pos = RandomStreetPoint(atStart ? 40f : 90f, atStart ? 700f : 500f);
+            a.Name = NameFor(a.Id);
+            a.Pos = CrowdMode ? RandomStreetPoint(40f, ActiveR) : RandomStreetPoint(atStart ? 40f : 90f, atStart ? 700f : 500f);
             a.Yaw = Random.Range(0f, 360f);
             a.ThinkAt = Time.time + Random.Range(0f, 0.5f);
             a.Stamina = 4f;
             _agents.Add(a);
+        }
+
+        private static string NameFor(int id) => FirstNames[id % FirstNames.Length] + (id >= FirstNames.Length ? " " + (id / FirstNames.Length + 1) : "");
+
+        /// <summary>Someone from the far-away crowd walked up close: make them a full bot.</summary>
+        private bool Promote(Vector3 pos, float safe, bool it, int color, int id)
+        {
+            if (_agents.Count - 1 >= _activeCap) return false;
+            if (_grid != null && _grid.IsBlocked(pos.x, pos.z)) return false;
+            var a = new Agent { Id = id, Name = NameFor(id), ColorIdx = color, Pos = pos, Safe = safe, Yaw = Random.Range(0f, 360f), Stamina = 4f, ThinkAt = Time.time + Random.Range(0f, 0.4f) };
+            _agents.Add(a);
+            if (it) SetIt(a, true);
+            return true;
+        }
+
+        /// <summary>A full bot far away goes back into the crowd.</summary>
+        private void Demote(Agent a)
+        {
+            _crowd.Add(a.Pos, a.Safe, a.It, a.ColorIdx, a.Id);
+            RemoveBot(a);
+        }
+
+        private void CrowdStep()
+        {
+            _crowd.Tick(50000, Me.Pos, ActiveR, Me.Safe, Promote);
+            float lim2 = (ActiveR + 50f) * (ActiveR + 50f);
+            for (int n = 0; n < 200 && _agents.Count > 1; n++)
+            {
+                if (_demoteCursor >= _agents.Count) _demoteCursor = 0;
+                var a = _agents[_demoteCursor];
+                Vector3 d = a.Pos - Me.Pos;
+                bool over = _agents.Count - 1 > _activeCap;
+                if (!a.IsPlayer && a.Script == null && (d.x * d.x + d.z * d.z > lim2 || (over && d.x * d.x + d.z * d.z > 60f * 60f))) Demote(a);
+                else _demoteCursor++;
+            }
+        }
+
+        /// <summary>Crowd mode: grow or shrink the zone of full bots around you to keep the game smooth.</summary>
+        private void AdjustCap()
+        {
+            if (Time.unscaledTime < _adjustAt) return;
+            _adjustAt = Time.unscaledTime + 3f;
+            if (Fps < 28f) _activeCap = Mathf.Max(300, (int)(_activeCap * 0.8f));
+            else if (Fps > 50f) _activeCap = Mathf.Min(6000, _activeCap + 250);
         }
 
         private Vector3 RandomStreetPoint(float minFromPlayer, float maxFromPlayer)
@@ -514,6 +585,7 @@ namespace TagGame.Mega
             Tagging();
             KeepItCount();
             if (AutoBots) AdjustBots();
+            else if (CrowdMode) { CrowdStep(); AdjustCap(); }
 
             // status line + the minimap's red ring on the nearest IT
             Agent near = null; float nd = float.MaxValue;
