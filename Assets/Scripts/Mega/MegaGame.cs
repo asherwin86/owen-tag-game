@@ -229,6 +229,7 @@ namespace TagGame.Mega
             _lastCount = 4; _lastBeep = 99;
             _adjustAt = Time.unscaledTime + 5f; _fpsT = 0f; _fpsFrames = 0f;
             Running = true;
+            Debug.Log("[Mega] round start in " + c.Name + ": spawn " + MegaWorld.Spawn.ToString("F0") + "  full bots " + (_agents.Count - 1) + "  spawn fallbacks " + _spawnFallbacks + "  crowd " + _crowd.Count);
             AddFeed("Welcome to " + c.Name + "!  " + TotalPlayers.ToString("N0") + " players, " + ItCount.ToString("N0") + " IT");
             AddFeed("Planes at the airport fly you to other countries (E)");
         }
@@ -394,6 +395,7 @@ namespace TagGame.Mega
             var a = new Agent { Id = id, Name = NameFor(id), ColorIdx = color, Pos = pos, Safe = safe, Yaw = Random.Range(0f, 360f), Stamina = 4f, ThinkAt = Time.time + Random.Range(0f, 0.4f) };
             _agents.Add(a);
             if (it) SetIt(a, true);
+            _promoted++;
             return true;
         }
 
@@ -402,12 +404,38 @@ namespace TagGame.Mega
         {
             _crowd.Add(a.Pos, a.Safe, a.It, a.ColorIdx, a.Id);
             RemoveBot(a);
+            _demoted++;
         }
 
-        private float _regionCheckAt;
+        private float _regionCheckAt, _diagAt;
+        private int _spawnFallbacks, _demoted, _promoted;
+
+        /// <summary>Every few seconds, write what the bots are doing to the log (Unity's Editor.log) so problems can be found.</summary>
+        private void Diagnose()
+        {
+            if (Time.unscaledTime < _diagAt || Me == null) return;
+            _diagAt = Time.unscaledTime + 10f;
+            float near = float.MaxValue; int within100 = 0, drawnish = 0;
+            foreach (var a in _agents)
+            {
+                if (a.IsPlayer) continue;
+                float d = Flat(a.Pos - Me.Pos);
+                if (d < near) near = d;
+                if (d < 100f) within100++;
+                if (d < _drawDist) drawnish++;
+            }
+            bool blockedHere = _grid == null || _grid.IsBlocked(Me.Pos.x, Me.Pos.z);
+            int freeAround = 0;
+            if (_grid != null) for (int k = 0; k < 16; k++) { float ang = k * 22.5f * Mathf.Deg2Rad; if (!_grid.IsBlocked(Me.Pos.x + Mathf.Cos(ang) * 60f, Me.Pos.z + Mathf.Sin(ang) * 60f)) freeAround++; }
+            Debug.Log("[Mega] full bots " + (_agents.Count - 1) + " (cap " + _activeCap + ")  crowd " + _crowd.Count + "  nearest " + (near < 1e9f ? near.ToString("0") : "-") + "m  within100 " + within100 + "  inDrawDist " + drawnish + " (" + _drawDist.ToString("0") + "m)"
+                + "  promoted " + _promoted + " demoted " + _demoted + " spawnFallbacks " + _spawnFallbacks
+                + "  me " + Me.Pos.ToString("F0") + " origin " + MegaWorld.OriginX.ToString("0") + "," + MegaWorld.OriginZ.ToString("0") + " walk " + (_grid != null) + " blockedHere " + blockedHere + " free60m " + freeAround + "/16  fps " + Fps.ToString("0")
+                + "  crowdRegion " + _crowd.RCX.ToString("0") + "," + _crowd.RCZ.ToString("0") + " r" + _crowd.RH.ToString("0"));
+        }
 
         private void CrowdStep()
         {
+            Diagnose();
             if (Time.time >= _regionCheckAt && Me != null && !Me.Away)
             {
                 _regionCheckAt = Time.time + 5f;
@@ -451,7 +479,8 @@ namespace TagGame.Mega
                 if (_grid != null && _grid.IsBlocked(x, z)) continue;
                 return new Vector3(x, 0f, z);
             }
-            return new Vector3(Street(StreetIdx(c.x)), 0f, c.z + minFromPlayer);
+            _spawnFallbacks++;
+            return new Vector3(Street(StreetIdx(c.x)) + Random.Range(-4f, 4f), 0f, c.z + minFromPlayer + Random.Range(0f, maxFromPlayer - minFromPlayer));
         }
 
         private void RemoveBot(Agent a)

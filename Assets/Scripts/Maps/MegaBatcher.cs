@@ -77,7 +77,7 @@ namespace TagGame.Maps
                 var bc = go.AddComponent<BoxCollider>();
                 bc.center = new Vector3(cx, y0 + h * 0.5f, cz);
                 bc.size = new Vector3(sx, h, sz);
-                if (_grid != null && y0 < 0.3f && h > 0.4f) _grid.BlockRect(cx, cz, sx, sz, 0.8f);
+                if (gridBlock && _grid != null && y0 > -0.5f && y0 < 0.3f && h > 0.4f) _grid.BlockRect(cx, cz, sx, sz, 0.8f);
             }
         }
 
