@@ -41,9 +41,17 @@ namespace TagGame.Mega
             public Renderer[] Brakes;
             public Transform Driver;
             public CarInteract Interact;
+            public int Lane = 1; public float Lat = OuterLane;     // which lane, and where across the road the car is now
+            public int Plan, PlanFor = int.MinValue, PlanAxis;    // what to do at the next crossing: 0 straight, -1 left, 1 right, 2 turn round
+            public int Signal;                                     // indicator: -1 left, 0 off, 1 right
+            public float SignalSince, ChangeT, StoppedFor;
+            public bool Turning, RightOnRed;
+            public float TurnT, TurnLen; public Vector3 TurnE, TurnC, TurnX; public int NAxis, NDir, NK, NLane;
+            public Renderer[] IndL, IndR;
+            public int ManualSignal; public float SignalYaw;
         }
 
-        public const float LaneOff = 3.5f, Cycle = 24f;
+        public const float Cycle = 24f;
         public static string ModelName(int m) => m == 1 ? "Volt Roadster" : "Volt Sedan";
 
         /// <summary>The car you're in (or null).</summary>
@@ -58,7 +66,8 @@ namespace TagGame.Mega
         private FollowCamera _follow;
         private Material _glass, _tyre, _dash, _screen, _redOn, _redOff, _head, _greenMark;
         private readonly Dictionary<Color, Material> _paint = new Dictionary<Color, Material>();
-        private float _spawnAt, _lightsAt;
+        private float _spawnAt, _lightsAt, _noEnterUntil;
+        private Material _ambOn, _ambOff;
         private Vector3 _savedOffset;
         private Renderer[] _hidden;
 
@@ -143,6 +152,8 @@ namespace TagGame.Mega
             _redOff = M(new Color(0.35f, 0.05f, 0.05f), 0.5f);
             _head = M(new Color(1f, 0.97f, 0.85f), 0.5f, 2f);
             _greenMark = M(new Color(0.2f, 1f, 0.4f), 0.3f, 2f);
+            _ambOn = M(new Color(1f, 0.6f, 0.05f), 0.5f, 4f);
+            _ambOff = M(new Color(0.45f, 0.3f, 0.1f), 0.5f);
             _lampR = M(new Color(1f, 0.1f, 0.08f), 0.5f, 4f);
             _lampY = M(new Color(1f, 0.75f, 0.1f), 0.5f, 4f);
             _lampG = M(new Color(0.2f, 1f, 0.35f), 0.5f, 4f);
@@ -209,6 +220,13 @@ namespace TagGame.Mega
             var b1 = P(PrimitiveType.Cube, new Vector3(-W * 0.36f, 0.35f + H * 0.65f, -L * 0.5f), new Vector3(0.42f, 0.1f, 0.05f), _redOff);
             var b2 = P(PrimitiveType.Cube, new Vector3(W * 0.36f, 0.35f + H * 0.65f, -L * 0.5f), new Vector3(0.42f, 0.1f, 0.05f), _redOff);
             car.Brakes = new[] { b1.GetComponent<Renderer>(), b2.GetComponent<Renderer>() };
+            // indicators: amber lights on all four corners
+            var fl = P(PrimitiveType.Cube, new Vector3(-W * 0.49f, 0.35f + H * 0.45f, L * 0.48f), new Vector3(0.12f, 0.12f, 0.12f), _ambOff);
+            var fr = P(PrimitiveType.Cube, new Vector3(W * 0.49f, 0.35f + H * 0.45f, L * 0.48f), new Vector3(0.12f, 0.12f, 0.12f), _ambOff);
+            var rl = P(PrimitiveType.Cube, new Vector3(-W * 0.49f, 0.35f + H * 0.45f, -L * 0.49f), new Vector3(0.12f, 0.12f, 0.12f), _ambOff);
+            var rr2 = P(PrimitiveType.Cube, new Vector3(W * 0.49f, 0.35f + H * 0.45f, -L * 0.49f), new Vector3(0.12f, 0.12f, 0.12f), _ambOff);
+            car.IndL = new[] { fl.GetComponent<Renderer>(), rl.GetComponent<Renderer>() };
+            car.IndR = new[] { fr.GetComponent<Renderer>(), rr2.GetComponent<Renderer>() };
             // inside: dashboard, steering wheel and the big centre screen
             P(PrimitiveType.Cube, new Vector3(0f, 0.35f + H + 0.02f, rd ? 0.55f : 0.95f), new Vector3(W * 0.8f, 0.14f, 0.45f), _dash);
             P(PrimitiveType.Cylinder, new Vector3(-0.38f, 0.35f + H + 0.18f, rd ? 0.3f : 0.7f), new Vector3(0.36f, 0.02f, 0.36f), _dash, new Vector3(70f, 0f, 0f));
@@ -250,7 +268,7 @@ namespace TagGame.Mega
                 k = MegaWorld.StreetIdx(axis == 0 ? near.z : near.x) + Random.Range(-span, span + 1);
                 along = (axis == 0 ? near.x : near.z) + Random.Range(-maxD, maxD);
                 along = Mathf.Round(along / 100f) * 100f + Random.Range(20f, 80f);
-                Vector3 p = LanePos(axis, k, dir, along, LaneOff);
+                Vector3 p = LanePos(axis, k, dir, along, OuterLane);
                 float d = Flat(p - near);
                 if (d < minD || d > maxD) continue;
                 if (!RoadOK(p)) continue;
@@ -287,14 +305,15 @@ namespace TagGame.Mega
             for (int n = 0; n < 3 && traffic < wantTraffic; n++)
             {
                 if (!LaneSpot(me, 140f, 300f, out int axis, out int k, out int dir, out float along)) break;
-                var c = MakeCar(Random.value < 0.25f ? 1 : 0, LanePos(axis, k, dir, along, LaneOff), LaneYaw(axis, dir), true);
-                c.Lanes = true; c.Axis = axis; c.K = k; c.Dir = dir; c.Speed = 8f;
+                int lane = Random.value < 0.5f ? 0 : 1;
+                var c = MakeCar(Random.value < 0.25f ? 1 : 0, LanePos(axis, k, dir, along, LaneOffset(lane)), LaneYaw(axis, dir), true);
+                c.Lanes = true; c.Axis = axis; c.K = k; c.Dir = dir; c.Speed = 8f; c.Lane = lane; c.Lat = LaneOffset(lane);
                 traffic++;
             }
             for (int n = 0; n < 3 && parked < wantParked; n++)
             {
                 if (!LaneSpot(me, 25f, 220f, out int axis, out int k, out int dir, out float along)) break;
-                Vector3 p = LanePos(axis, k, dir, along, 6.9f);
+                Vector3 p = LanePos(axis, k, dir, along, CurbPark);
                 if (Physics.CheckBox(p + Vector3.up, new Vector3(1.2f, 0.7f, 2.6f), Quaternion.Euler(0f, LaneYaw(axis, dir), 0f), ~0, QueryTriggerInteraction.Ignore)) continue;
                 MakeCar(Random.value < 0.35f ? 1 : 0, p, LaneYaw(axis, dir), false);
                 parked++;
@@ -305,67 +324,213 @@ namespace TagGame.Mega
 
         private float LaneAlong(Car c) => c.Axis == 0 ? c.T.position.x : c.T.position.z;
 
+        // ---- two lanes each way: lane 0 is the inner (left) lane, lane 1 the outer (right) lane
+        public const float InnerLane = 1.9f, OuterLane = 4.8f, CurbPark = 7.3f;
+        public static float LaneOffset(int lane) => lane == 0 ? InnerLane : OuterLane;
+
+        /// <summary>Which way you face after turning left (-1) or right (+1).</summary>
+        private static void AfterTurn(int axis, int dir, int turn, out int nAxis, out int nDir)
+        {
+            float yaw = LaneYaw(axis, dir) + 90f * turn;
+            yaw = Mathf.Repeat(yaw, 360f);
+            if (Mathf.Abs(Mathf.DeltaAngle(yaw, 0f)) < 1f) { nAxis = 1; nDir = 1; }
+            else if (Mathf.Abs(Mathf.DeltaAngle(yaw, 90f)) < 1f) { nAxis = 0; nDir = 1; }
+            else if (Mathf.Abs(Mathf.DeltaAngle(yaw, 180f)) < 1f) { nAxis = 1; nDir = -1; }
+            else { nAxis = 0; nDir = -1; }
+        }
+
+        private bool TurnRoadOk(Car c, int nextIdx, int turn)
+        {
+            if (turn == 0) return RoadOK(LanePos(c.Axis, c.K, c.Dir, MegaWorld.Street(nextIdx) + c.Dir * 50f, 0f));
+            AfterTurn(c.Axis, c.Dir, turn, out int na, out int nd);
+            return RoadOK(LanePos(na, nextIdx, nd, MegaWorld.Street(c.K) + nd * 50f, 0f));
+        }
+
+        /// <summary>Is a car (other than me) in this lane between along a and along b?</summary>
+        private Car CarInLane(Car me, int axis, int k, int dir, float latLo, float latHi, float a, float b)
+        {
+            float lo = Mathf.Min(a, b), hi = Mathf.Max(a, b);
+            foreach (var o in _cars)
+            {
+                if (o == me || o.T == null) continue;
+                Vector3 p = o.T.position;
+                float along = axis == 0 ? p.x : p.z, cross = axis == 0 ? p.z : p.x;
+                float lat = (axis == 0 ? (MegaWorld.Street(k) - cross) : (cross - MegaWorld.Street(k))) * dir;   // + = right of the centre line for this direction
+                if (lat < latLo || lat > latHi) continue;
+                if (along >= lo && along <= hi) return o;
+            }
+            return null;
+        }
+
         private void LaneStep(Car c, float dt, float cruise)
         {
+            if (c.Turning) { TurnStep(c, dt); return; }
             float pos = LaneAlong(c);
             int nextIdx = c.Dir > 0 ? Mathf.FloorToInt(pos / 100f) + 1 : Mathf.CeilToInt(pos / 100f) - 1;
             float next = MegaWorld.Street(nextIdx);
             float toCentre = (next - pos) * c.Dir;
-            float stopDist = toCentre - 12f;
             int ix = c.Axis == 0 ? nextIdx : c.K, iz = c.Axis == 0 ? c.K : nextIdx;
-            float target = cruise;
             string why = "";
+
+            // plan what to do at the next crossing
+            if (c.PlanFor != nextIdx || c.PlanAxis != c.Axis)
+            {
+                c.PlanFor = nextIdx; c.PlanAxis = c.Axis;
+                bool s = TurnRoadOk(c, nextIdx, 0), r = TurnRoadOk(c, nextIdx, 1), l = TurnRoadOk(c, nextIdx, -1);
+                float roll = Random.value;
+                if (s && (roll < 0.55f || (!r && !l))) c.Plan = 0;
+                else if (r && (roll < 0.8f || !l)) c.Plan = 1;
+                else if (l) c.Plan = -1;
+                else c.Plan = 2;   // dead end: turn around
+            }
+            int wantLane = c.Plan == 1 ? 1 : (c.Plan == -1 ? 0 : c.Lane);
+
+            // the car ahead in my lane
+            float myLat = c.Lat;
+            var ahead = CarInLane(c, c.Axis, c.K, c.Dir, myLat - 1.4f, myLat + 1.4f, pos + c.Dir * 0.5f, pos + c.Dir * 30f);
+            float gap = ahead != null ? Mathf.Abs(LaneAlong(ahead) - pos) : 999f;
+
+            // overtake a slow car when going straight on
+            if (c.Plan == 0 && ahead != null && gap < 22f && ahead.Speed < cruise - 3f && toCentre > 45f) wantLane = 1 - c.Lane;
+
+            // change lanes: indicator first, then move across when the other lane is clear
+            if (wantLane != c.Lane && c.ChangeT <= 0f && toCentre > 18f)
+            {
+                float tl = LaneOffset(wantLane);
+                bool clear = CarInLane(c, c.Axis, c.K, c.Dir, tl - 1.4f, tl + 1.4f, pos - c.Dir * 9f, pos + c.Dir * 12f) == null;
+                c.Signal = wantLane == 0 ? -1 : 1;
+                if (clear && Time.time >= c.SignalSince + 1.2f && c.SignalSince > 0f) { c.Lane = wantLane; c.ChangeT = 1f; }
+                if (c.SignalSince <= 0f) c.SignalSince = Time.time;
+                why = clear ? "Changing lanes" : "Waiting to change lanes";
+            }
+            else if (c.ChangeT <= 0f) { c.SignalSince = 0f; c.Signal = c.Plan == 1 || c.Plan == -1 ? (toCentre < 60f ? c.Plan : 0) : 0; }
+            float targetLat = LaneOffset(c.Lane);
+            if (c.ChangeT > 0f)
+            {
+                c.Lat = Mathf.MoveTowards(c.Lat, targetLat, 1.8f * dt);
+                if (Mathf.Abs(c.Lat - targetLat) < 0.01f) { c.ChangeT = 0f; c.SignalSince = 0f; }
+            }
+            else c.Lat = Mathf.MoveTowards(c.Lat, targetLat, 3f * dt);
+
+            // speed: traffic lights (with right-on-red and unprotected lefts), the car ahead, people
+            float target = cruise;
+            float stopDist = toCentre - 12f;
             int light = LightState(ix, iz, c.Axis);
-            if (light != 2 && stopDist > -0.5f && stopDist < 28f)
+            bool atLine = stopDist > -0.5f && stopDist < 30f;
+            if (light != 2 && atLine)
             {
-                target = stopDist < 1f ? 0f : Mathf.Min(target, stopDist * 0.55f);
-                why = light == 1 ? "Slowing for a yellow light" : "Stopping for a red light";
+                if (light == 1 && stopDist < 6f && c.Speed > 6f) { why = "Going through on yellow"; }
+                else
+                {
+                    target = stopDist < 1f ? 0f : Mathf.Min(target, stopDist * 0.55f);
+                    why = light == 1 ? "Slowing for a yellow light" : "Stopping for a red light";
+                    if (c.Plan == 1 && light == 0 && stopDist < 1.5f)
+                    {
+                        // right turn on red: stop fully, then go if nothing is coming from the left
+                        if (c.Speed < 0.3f && c.StoppedFor > 1f && CrossTrafficClear(c, nextIdx)) { target = 4f; why = "Turning right on red"; c.RightOnRed = true; }
+                        else why = "Stopped: right on red when it's clear";
+                    }
+                }
             }
-            // someone in front (another car, a person, you)
-            Vector3 fwd = Quaternion.Euler(0f, LaneYaw(c.Axis, c.Dir), 0f) * Vector3.forward;
-            foreach (var o in _cars)
-            {
-                if (o == c || o.T == null) continue;
-                Vector3 d = o.T.position - c.T.position;
-                float ahead = Vector3.Dot(d, fwd), side = Vector3.Dot(d, Quaternion.Euler(0f, 90f, 0f) * fwd);
-                if (ahead > 0f && ahead < 14f && Mathf.Abs(side) < 1.6f) { target = Mathf.Min(target, Mathf.Max(0f, (ahead - 6.5f) * 1.2f)); if (why == "") why = "Following the car ahead"; }
-            }
+            if (c.RightOnRed && light != 2) { target = Mathf.Max(target, 4f); }
+            if (ahead != null) { float t2 = Mathf.Max(0f, (gap - 7f) * 1.1f); if (t2 < target) { target = t2; if (why == "") why = "Following the car ahead"; } }
+            Vector3 fwd = Quaternion.Euler(0f, LaneYaw(c.Axis, c.Dir), 0f) * Vector3.forward, right = Quaternion.Euler(0f, 90f, 0f) * fwd;
             var g = MegaGame.I;
             if (g != null && g.Running)
                 foreach (var a in g.Agents)
                 {
-                    if (a.Out) continue;
-                    if (a.IsPlayer && Mine == c) continue;
+                    if (a.Out || (a.IsPlayer && Mine == c)) continue;
                     Vector3 d = a.Pos - c.T.position;
-                    float ahead = Vector3.Dot(d, fwd), side = Vector3.Dot(d, Quaternion.Euler(0f, 90f, 0f) * fwd);
-                    if (ahead > 0f && ahead < 10f && Mathf.Abs(side) < 1.8f) { target = 0f; why = "Waiting for someone to cross"; }
+                    float ah = Vector3.Dot(d, fwd), sd = Vector3.Dot(d, right);
+                    if (ah > 0f && ah < 10f && Mathf.Abs(sd) < 1.8f) { target = 0f; why = "Waiting for someone to cross"; }
                 }
-            float acc = target > c.Speed ? 5f : 11f;
-            c.Speed = Mathf.MoveTowards(c.Speed, target, acc * dt);
-            float np = pos + c.Dir * c.Speed * dt;
-            // passing the middle of a crossing: maybe turn
-            if ((next - pos) * c.Dir > 0f && (next - np) * c.Dir <= 0f)
+
+            // unprotected left: wait in the crossing for a gap in the oncoming traffic
+            float arcStart = toCentre - 10f;
+            if (c.Plan == -1 && arcStart < 3f && arcStart > -0.5f && !OncomingClear(c, nextIdx) && light != 0)
             {
-                int oldK = c.K, oldAxis = c.Axis;
-                float roll = Random.value;
-                bool straightOk = RoadOK(LanePos(c.Axis, c.K, c.Dir, next + c.Dir * 50f, 0f));
-                int turnDir = Random.value < 0.5f ? 1 : -1;
-                bool turnOk = RoadOK(LanePos(1 - c.Axis, nextIdx, turnDir, MegaWorld.Street(oldK) + turnDir * 50f, 0f));
-                bool otherOk = RoadOK(LanePos(1 - c.Axis, nextIdx, -turnDir, MegaWorld.Street(oldK) - turnDir * 50f, 0f));
-                if ((roll < 0.35f || !straightOk) && (turnOk || otherOk))
-                {
-                    if (!turnOk) turnDir = -turnDir;
-                    c.Axis = 1 - oldAxis; c.K = nextIdx; c.Dir = turnDir;
-                    Vector3 p = LanePos(c.Axis, c.K, c.Dir, MegaWorld.Street(oldK) + c.Dir * 2f, LaneOff);
-                    c.T.position = p;
-                    c.Yaw = LaneYaw(c.Axis, c.Dir);
-                    return;
-                }
-                if (!straightOk) { c.Dir = -c.Dir; c.Yaw = LaneYaw(c.Axis, c.Dir); c.T.position = LanePos(c.Axis, c.K, c.Dir, np, LaneOff); return; }
+                target = arcStart < 0.6f ? 0f : Mathf.Min(target, arcStart);
+                why = "Unprotected left: waiting for oncoming traffic";
             }
-            c.T.position = LanePos(c.Axis, c.K, c.Dir, np, LaneOff);
-            c.Yaw = LaneYaw(c.Axis, c.Dir);
-            if (c == Mine) Status = why != "" ? why : (c.Speed > 1f ? "Self-driving" : "Self-driving: waiting");
+
+            float acc = target > c.Speed ? 4.5f : 10f;
+            c.Speed = Mathf.MoveTowards(c.Speed, target, acc * dt);
+            c.StoppedFor = c.Speed < 0.3f ? c.StoppedFor + dt : 0f;
+            float np = pos + c.Dir * c.Speed * dt;
+
+            // reached the start of the turn
+            if (c.Plan != 0 && (next - 10f * c.Dir - np) * c.Dir <= 0f && (next - 10f * c.Dir - pos) * c.Dir > -1f)
+            {
+                if (c.Plan == 2) { c.Dir = -c.Dir; c.Lane = 1; c.Lat = OuterLane; c.PlanFor = int.MinValue; c.T.position = LanePos(c.Axis, c.K, c.Dir, np, c.Lat); c.Yaw = LaneYaw(c.Axis, c.Dir); return; }
+                StartTurn(c, nextIdx, c.Plan);
+                return;
+            }
+            c.T.position = LanePos(c.Axis, c.K, c.Dir, np, c.Lat);
+            c.Yaw = LaneYaw(c.Axis, c.Dir) + (c.ChangeT > 0f ? (targetLat - c.Lat) * 4f : 0f);
+            if (c == Mine) Status = why != "" ? why : (c.Speed > 1f ? (c.Plan == 1 ? "Self-driving: turning right ahead" : c.Plan == -1 ? "Self-driving: turning left ahead" : "Self-driving") : "Self-driving: waiting");
+        }
+
+        /// <summary>Nothing coming the other way towards this crossing (for an unprotected left turn).</summary>
+        private bool OncomingClear(Car c, int nextIdx)
+        {
+            float centre = MegaWorld.Street(nextIdx);
+            foreach (var o in _cars)
+            {
+                if (o == c || o.T == null || o.Turning || o.Axis != c.Axis || o.Dir != -c.Dir || o.K != c.K) continue;
+                float d = (centre - LaneAlong(o)) * o.Dir;   // how far before the centre the oncoming car is
+                if (d > -6f && d < 45f && (o.Speed > 1f || d < 12f)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>No cross traffic coming from the left (for a right turn on red).</summary>
+        private bool CrossTrafficClear(Car c, int nextIdx)
+        {
+            AfterTurn(c.Axis, c.Dir, -1, out int la, out int ld);   // cars coming from my left drive in the direction I'd face after a right turn
+            AfterTurn(c.Axis, c.Dir, 1, out int ra, out int rd);
+            float centre = MegaWorld.Street(c.K);
+            foreach (var o in _cars)
+            {
+                if (o == c || o.T == null || o.Axis != ra || o.Dir != rd || o.K != nextIdx) continue;
+                float d = (centre - LaneAlong(o)) * o.Dir;
+                if (d > -8f && d < 40f) return false;
+            }
+            return true;
+        }
+
+        private void StartTurn(Car c, int nextIdx, int turn)
+        {
+            AfterTurn(c.Axis, c.Dir, turn, out int na, out int nd);
+            float centre = MegaWorld.Street(nextIdx);
+            Vector3 e = LanePos(c.Axis, c.K, c.Dir, centre - c.Dir * 10f, c.Lat);
+            int newLane = turn == 1 ? 1 : 0;
+            Vector3 x = LanePos(na, nextIdx, nd, MegaWorld.Street(c.K) + nd * 10f, LaneOffset(newLane));
+            Vector3 ctrl = c.Axis == 0 ? new Vector3(x.x, 0f, e.z) : new Vector3(e.x, 0f, x.z);
+            c.Turning = true; c.TurnT = 0f; c.TurnE = e; c.TurnC = ctrl; c.TurnX = x;
+            c.TurnLen = ((ctrl - e).magnitude + (x - ctrl).magnitude) * 0.85f;
+            c.NAxis = na; c.NDir = nd; c.NK = nextIdx; c.NLane = newLane;
+            c.Signal = turn;
+            c.RightOnRed = false;
+        }
+
+        private void TurnStep(Car c, float dt)
+        {
+            float target = 7f;
+            c.Speed = Mathf.MoveTowards(c.Speed, target, 5f * dt);
+            c.TurnT = Mathf.Min(1f, c.TurnT + c.Speed * dt / Mathf.Max(1f, c.TurnLen));
+            float t = c.TurnT, u = 1f - t;
+            Vector3 p = u * u * c.TurnE + 2f * u * t * c.TurnC + t * t * c.TurnX;
+            Vector3 d = 2f * u * (c.TurnC - c.TurnE) + 2f * t * (c.TurnX - c.TurnC);
+            c.T.position = p;
+            if (d.sqrMagnitude > 0.0001f) c.Yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+            if (c == Mine) Status = c.Signal > 0 ? "Turning right" : "Turning left";
+            if (t >= 1f)
+            {
+                c.Turning = false;
+                c.Axis = c.NAxis; c.Dir = c.NDir; c.K = c.NK; c.Lane = c.NLane; c.Lat = LaneOffset(c.NLane);
+                c.Yaw = LaneYaw(c.Axis, c.Dir);
+                c.Signal = 0; c.PlanFor = int.MinValue;
+            }
         }
 
         // ================================================================== you driving
@@ -374,6 +539,7 @@ namespace TagGame.Mega
         {
             var g = MegaGame.I;
             if (Driving || c == null || g == null || !g.Running || g.Me == null) return;
+            if (Time.unscaledTime < _noEnterUntil) return;   // the same E press that got you out
             Mine = c;
             c.Traffic = false; c.Lanes = false; c.Speed = 0f;
             if (c.Interact != null) c.Interact.enabled = false;
@@ -389,13 +555,15 @@ namespace TagGame.Mega
             BuildUi();
             _panel.SetActive(true);
             GameAudio.Play("pickup", 0.6f, 0.6f);
-            TagPopup.Show("Driving the " + ModelName(c.Model) + "!  W/S drive, A/D steer, F self-driving, P auto park, C camera, E get out", new Color(0.2f, 0.6f, 0.95f));
+            TagPopup.Show("Driving the " + ModelName(c.Model) + "!  W/S drive, A/D steer, Q/R indicators, F self-driving, P auto park, C camera, E get out", new Color(0.2f, 0.6f, 0.95f));
         }
 
         public void Exit()
         {
             var c = Mine;
             if (c == null) return;
+            _noEnterUntil = Time.unscaledTime + 0.6f;
+            c.Signal = 0; c.ManualSignal = 0;
             Mine = null; SelfDriving = false; _parkPhase = 0; ClearSpots();
             if (c.Interact != null) c.Interact.enabled = true;
             Vector3 side = c.T.position - c.T.right * 2.4f; side.y = 1.2f;
@@ -450,7 +618,12 @@ namespace TagGame.Mega
             c.Dir = c.Axis == 0 ? (s > 0 ? 1 : -1) : (co > 0 ? 1 : -1);
             c.K = MegaWorld.StreetIdx(c.Axis == 0 ? c.T.position.z : c.T.position.x);
             c.Lanes = true;
-            c.T.position = LanePos(c.Axis, c.K, c.Dir, LaneAlong(c), LaneOff);
+            float cross = c.Axis == 0 ? c.T.position.z : c.T.position.x;
+            float lat = (c.Axis == 0 ? (MegaWorld.Street(c.K) - cross) : (cross - MegaWorld.Street(c.K))) * c.Dir;
+            c.Lane = Mathf.Abs(lat - InnerLane) < Mathf.Abs(lat - OuterLane) ? 0 : 1;
+            c.Lat = Mathf.Clamp(lat, 0.5f, OuterLane);
+            c.Turning = false; c.PlanFor = int.MinValue; c.ChangeT = 1f;
+            c.T.position = LanePos(c.Axis, c.K, c.Dir, LaneAlong(c), c.Lat);
             c.Yaw = LaneYaw(c.Axis, c.Dir);
         }
 
@@ -468,7 +641,7 @@ namespace TagGame.Mega
             for (float d = 8f; d <= 60f && _spots.Count < 3; d += 6f)
             {
                 float a = along + Mine.Dir * d;
-                Vector3 p = LanePos(Mine.Axis, Mine.K, Mine.Dir, a, 6.9f);
+                Vector3 p = LanePos(Mine.Axis, Mine.K, Mine.Dir, a, CurbPark);
                 float mid = Mathf.Abs(a - Mathf.Round(a / 100f) * 100f);
                 if (mid < 16f) continue;                       // not in a crossing
                 if (Physics.CheckBox(p + Vector3.up, new Vector3(1.1f, 0.7f, 2.5f), Quaternion.Euler(0f, Mine.Yaw, 0f), ~0, QueryTriggerInteraction.Ignore)) continue;
@@ -523,7 +696,7 @@ namespace TagGame.Mega
         private void ParkStep(float dt)
         {
             var c = Mine;
-            Vector3 lanePoint = LanePos(c.Axis, c.K, c.Dir, c.Axis == 0 ? _parkTarget.x : _parkTarget.z, LaneOff);
+            Vector3 lanePoint = LanePos(c.Axis, c.K, c.Dir, c.Axis == 0 ? _parkTarget.x : _parkTarget.z, OuterLane);
             if (_parkPhase == 1)
             {
                 Vector3 d = lanePoint - c.T.position; d.y = 0f;
@@ -642,6 +815,15 @@ namespace TagGame.Mega
                 var kb = Keyboard.current; var pad = Gamepad.current;
                 if (kb != null && kb.fKey.wasPressedThisFrame) ToggleSelfDriving();
                 if (kb != null && kb.pKey.wasPressedThisFrame) OpenAutoPark();
+                // indicators: Q left, R right, H hazards (press again to turn off)
+                if (kb != null && kb.qKey.wasPressedThisFrame) { Mine.ManualSignal = Mine.ManualSignal == -1 ? 0 : -1; Mine.SignalYaw = Mine.Yaw; GameAudio.Play("click", 0.5f); }
+                if (kb != null && kb.rKey.wasPressedThisFrame) { Mine.ManualSignal = Mine.ManualSignal == 1 ? 0 : 1; Mine.SignalYaw = Mine.Yaw; GameAudio.Play("click", 0.5f); }
+                if (kb != null && kb.hKey.wasPressedThisFrame) { Mine.ManualSignal = Mine.ManualSignal == 3 ? 0 : 3; GameAudio.Play("click", 0.5f); }
+                if (pad != null && pad.dpad.left.wasPressedThisFrame) { Mine.ManualSignal = Mine.ManualSignal == -1 ? 0 : -1; Mine.SignalYaw = Mine.Yaw; }
+                if (pad != null && pad.dpad.right.wasPressedThisFrame) { Mine.ManualSignal = Mine.ManualSignal == 1 ? 0 : 1; Mine.SignalYaw = Mine.Yaw; }
+                // like a real car, the indicator switches itself off after you finish the turn
+                if ((Mine.ManualSignal == 1 || Mine.ManualSignal == -1) && Mathf.Abs(Mathf.DeltaAngle(Mine.Yaw, Mine.SignalYaw)) > 70f) Mine.ManualSignal = 0;
+                if ((Mine.ManualSignal != 0 || (SelfDriving && Mine.Signal != 0)) && Time.frameCount % 24 == 0) GameAudio.Play("click", 0.25f, 1.3f);
                 if ((kb != null && kb.cKey.wasPressedThisFrame) || (pad != null && pad.buttonNorth.wasPressedThisFrame)) ToggleCamera();
                 if (_parkPanel != null && _parkPanel.activeSelf && kb != null)
                 {
@@ -673,6 +855,10 @@ namespace TagGame.Mega
                 c.T.rotation = Quaternion.Euler(0f, c.VisYaw, 0f);
                 bool braking = c.Speed < 2f || (c.Traffic && c.Speed < 6f);
                 if (c.Brakes != null) foreach (var b in c.Brakes) if (b != null) b.sharedMaterial = braking ? _redOn : _redOff;
+                int sig = c == Mine && !SelfDriving && _parkPhase == 0 ? c.ManualSignal : c.Signal;
+                bool blink = (Time.time * 1.6f) % 1f < 0.5f;
+                if (c.IndL != null) foreach (var r in c.IndL) if (r != null) r.sharedMaterial = (sig == -1 || sig == 3) && blink ? _ambOn : _ambOff;
+                if (c.IndR != null) foreach (var r in c.IndR) if (r != null) r.sharedMaterial = (sig == 1 || sig == 3) && blink ? _ambOn : _ambOff;
             }
         }
 
@@ -787,7 +973,10 @@ namespace TagGame.Mega
             int kmh = Mathf.RoundToInt(Mathf.Abs(Mine.Speed) * 3.6f);
             _speedText.text = kmh.ToString();
             string gear = _parkPhase > 0 ? "AUTO PARK" : (Mine.Speed < -0.3f ? "R" : (Mathf.Abs(Mine.Speed) < 0.3f ? "P" : "D"));
-            _statusText.text = ModelName(Mine.Model) + "  ·  " + gear + (Status != "" ? "  ·  " + Status : "");
+            int sig = SelfDriving || _parkPhase > 0 ? Mine.Signal : Mine.ManualSignal;
+            bool on = (Time.time * 1.6f) % 1f < 0.5f;
+            string ind = sig == 3 ? (on ? "<color=#FFA020><<  >></color>  " : "") : sig == -1 ? (on ? "<color=#FFA020><<</color>  " : "") : sig == 1 ? (on ? "<color=#FFA020>>></color>  " : "") : "";
+            _statusText.text = ind + ModelName(Mine.Model) + "  ·  " + gear + (Status != "" ? "  ·  " + Status : "");
             _fsdLabel.text = SelfDriving ? "SELF-DRIVE\n<size=16>ON</size>" : "SELF-DRIVE\n<size=16>F</size>";
             _camLabel.text = Inside ? "CAMERA\n<size=16>inside</size>" : "CAMERA\n<size=16>outside</size>";
         }
@@ -799,6 +988,8 @@ namespace TagGame.Mega
                 if (c.T == null) continue;
                 c.T.position -= d;
                 c.K = MegaWorld.StreetIdx(c.Axis == 0 ? c.T.position.z : c.T.position.x);
+                if (c.Turning) { c.TurnE -= d; c.TurnC -= d; c.TurnX -= d; c.NK = MegaWorld.StreetIdx(c.NAxis == 0 ? c.TurnX.z : c.TurnX.x); }
+                c.PlanFor = int.MinValue;
             }
             for (int i = 0; i < _spots.Count; i++) _spots[i] -= d;
             foreach (var m in _spotMarks) if (m != null) m.position -= d;
