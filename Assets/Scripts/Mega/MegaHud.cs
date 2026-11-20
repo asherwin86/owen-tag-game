@@ -101,7 +101,7 @@ namespace TagGame.Mega
             {
                 int id = i;
                 var c = MegaWorld.Countries[i];
-                _countryButtons[i] = MG.MakeButton(s, c.Name + "\n<size=18>" + (c.Half * 2f / 1000f).ToString("0") + " km</size>", MG.C, new Vector2((i - (_countryButtons.Length - 1) * 0.5f) * 300f, -45f), new Vector2(280f, 80f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.StartCountry = id; RefreshBots(); }, 26);
+                _countryButtons[i] = MG.MakeButton(s, c.Name + "\n<size=18>" + c.SizeKm.ToString("#,0") + " km</size>", MG.C, new Vector2((i - (_countryButtons.Length - 1) * 0.5f) * 300f, -45f), new Vector2(280f, 80f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.StartCountry = id; RefreshBots(); }, 26);
             }
             MG.MakeText(s, "<b>Controls</b>   WASD move · Shift sprint · Ctrl/Q dash · <b>1-4</b> slots · <b>Click / F</b> fire or use · <b>E</b> vending, lockers, swap, cars, planes · <b>T</b> hold to tie laces · <b>G</b> dance · Esc pause\nCars: W/S drive · A/D steer · Q/R indicators · F self-driving · P auto park · C camera · E get out.   Planes: Shift/Ctrl power · W/S nose · A/D turn.   Wait for green at crossings!",
                 20, MG.C, new Vector2(0f, -140f), new Vector2(1700f, 80f)).color = new Color(0.7f, 0.75f, 0.8f);
@@ -300,6 +300,8 @@ namespace TagGame.Mega
             foreach (var f in g.Feed) sb.Append(f).Append('\n');
             _feed.text = sb.ToString();
 
+            bool driving = MegaCars.I != null && MegaCars.I.Driving;
+            for (int i = 0; i < 4; i++) if (_slotBg[i].gameObject.activeSelf == driving) _slotBg[i].gameObject.SetActive(!driving);
             if (mp != null)
             {
                 for (int i = 0; i < 4; i++)

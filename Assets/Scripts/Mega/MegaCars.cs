@@ -60,6 +60,17 @@ namespace TagGame.Mega
         public bool SelfDriving { get; private set; }
         public bool Inside { get; private set; } = true;
         public string Status { get; private set; } = "";
+        public bool AutoParking => _parkPhase > 0;
+        public IReadOnlyList<Car> Cars => _cars;
+        public int ShownSignal => Mine == null ? 0 : (SelfDriving || _parkPhase > 0 ? Mine.Signal : Mine.ManualSignal);
+        public static int LightAhead(Car c, out float dist)
+        {
+            float pos = c.Axis == 0 ? c.T.position.x : c.T.position.z;
+            int nextIdx = c.Dir > 0 ? Mathf.FloorToInt(pos / 100f) + 1 : Mathf.CeilToInt(pos / 100f) - 1;
+            dist = (MegaWorld.Street(nextIdx) - pos) * c.Dir - 12f;
+            int ix = c.Axis == 0 ? nextIdx : c.K, iz = c.Axis == 0 ? c.K : nextIdx;
+            return LightState(ix, iz, c.Axis);
+        }
 
         private readonly List<Car> _cars = new List<Car>();
         private PlayerController _player;
@@ -378,7 +389,8 @@ namespace TagGame.Mega
                 c.PlanFor = nextIdx; c.PlanAxis = c.Axis;
                 bool s = TurnRoadOk(c, nextIdx, 0), r = TurnRoadOk(c, nextIdx, 1), l = TurnRoadOk(c, nextIdx, -1);
                 float roll = Random.value;
-                if (s && (roll < 0.55f || (!r && !l))) c.Plan = 0;
+                if (c == Mine && Navigating) { c.Plan = NavChoice(c.Axis, c.K, c.Dir, nextIdx, s, l, r, _visits, true); UpdateRoute(); }
+                else if (s && (roll < 0.55f || (!r && !l))) c.Plan = 0;
                 else if (r && (roll < 0.8f || !l)) c.Plan = 1;
                 else if (l) c.Plan = -1;
                 else c.Plan = 2;   // dead end: turn around
@@ -453,6 +465,13 @@ namespace TagGame.Mega
                 why = "Unprotected left: waiting for oncoming traffic";
             }
 
+            // navigation: slow down and park when the destination is just ahead on this street
+            if (c == Mine && Navigating && c.Axis == _gAxis && c.K == _gK && c.Dir == _gDir)
+            {
+                float toGoal = (_gAlong - pos) * c.Dir;
+                if (toGoal > -2f && toGoal < 45f) { target = Mathf.Min(target, Mathf.Max(2f, toGoal * 0.4f)); why = "Arriving at " + DestName; }
+                if (toGoal > -2f && toGoal < 9f) { Arrive(); return; }
+            }
             float acc = target > c.Speed ? 4.5f : 10f;
             c.Speed = Mathf.MoveTowards(c.Speed, target, acc * dt);
             c.StoppedFor = c.Speed < 0.3f ? c.StoppedFor + dt : 0f;
@@ -533,6 +552,157 @@ namespace TagGame.Mega
             }
         }
 
+
+        // ================================================================== navigation (pick a place on the map, self-driving takes you there and parks)
+
+        public bool Navigating { get; private set; }
+        public MegaPlaces.Place Dest { get; private set; }
+        public string DestName => Dest.Name ?? "";
+        public bool HasDest { get; private set; }
+        public readonly List<Vector3> Route = new List<Vector3>();
+        public double RouteMeters { get; private set; }
+        public bool RouteTruncated { get; private set; }
+        private int _gAxis, _gK, _gDir; private float _gAlong;
+        private readonly Dictionary<long, int> _visits = new Dictionary<long, int>();
+
+        /// <summary>Set a destination (from the map or the search). Self-driving drives there, turning by itself, and parks.</summary>
+        public void NavigateTo(MegaPlaces.Place p)
+        {
+            if (Mine == null) return;
+            int here = MegaWorld.CountryAtLocal(Mine.T.position);
+            if (p.Country != here)
+            {
+                TagPopup.Show(p.Name + " is in " + MegaWorld.Countries[p.Country].Name + " - fly there from an airport first", new Color(0.9f, 0.6f, 0.2f));
+                return;
+            }
+            Dest = p; HasDest = true; Navigating = true;
+            _visits.Clear();
+            GoalFromDest();
+            _parkPhase = 0; ClearSpots();
+            if (!SelfDriving) { SelfDriving = true; SnapToLane(Mine); }
+            Mine.PlanFor = int.MinValue;
+            UpdateRoute();
+            GameAudio.Play("tie", 0.6f, 1.3f);
+            TagPopup.Show("Navigating to " + p.Name + " - " + FormatDist(RouteMeters), new Color(0.2f, 0.55f, 0.95f));
+        }
+
+        public void CancelNav()
+        {
+            Navigating = false; HasDest = false; Route.Clear();
+            if (Mine != null) Mine.PlanFor = int.MinValue;
+        }
+
+        public static string FormatDist(double m) => m < 1000 ? Mathf.RoundToInt((float)m) + " m" : (m < 100000 ? (m / 1000.0).ToString("0.0") + " km" : (m / 1000.0).ToString("#,0") + " km");
+        public static string FormatTime(double s)
+        {
+            if (s < 60) return Mathf.CeilToInt((float)s) + " s";
+            if (s < 3600) return Mathf.CeilToInt((float)(s / 60)) + " min";
+            if (s < 86400 * 2) return (s / 3600).ToString("0.0") + " h";
+            if (s < 86400 * 365) return (s / 86400).ToString("#,0") + " days";
+            return (s / 86400 / 365).ToString("#,0.0") + " years";
+        }
+
+        /// <summary>The curb spot to park at: on the street nearest the destination, on the side facing it.</summary>
+        private void GoalFromDest()
+        {
+            Vector3 d = Dest.Local;
+            int kx = MegaWorld.StreetIdx(d.x), kz = MegaWorld.StreetIdx(d.z);
+            float dz = d.z - MegaWorld.Street(kz), dx = d.x - MegaWorld.Street(kx);
+            if (Mathf.Abs(dz) <= Mathf.Abs(dx)) { _gAxis = 0; _gK = kz; _gDir = dz > 0 ? -1 : 1; _gAlong = d.x; }
+            else { _gAxis = 1; _gK = kx; _gDir = dx > 0 ? 1 : -1; _gAlong = d.z; }
+            // keep the parking spot out of the crossings
+            float m = Mathf.Repeat(_gAlong, 100f);
+            if (m < 18f) _gAlong += 18f - m; else if (m > 82f) _gAlong -= m - 82f;
+        }
+
+        private static long VKey(int ix, int iz) => ((long)ix << 32) ^ (uint)iz;
+
+        /// <summary>Which way to go at the crossing ahead (index nextIdx on my street): 0 straight, -1 left, 1 right, 2 turn round.</summary>
+        private int NavChoice(int axis, int k, int dir, int nextIdx, bool s, bool l, bool r, Dictionary<long, int> visits, bool remember)
+        {
+            int ix = axis == 0 ? nextIdx : k, iz = axis == 0 ? k : nextIdx;
+            if (remember) { visits.TryGetValue(VKey(ix, iz), out int v); visits[VKey(ix, iz)] = v + 1; }
+            // on the right street but going the wrong way: turn round
+            if (axis == _gAxis && k == _gK && dir != _gDir) return 2;
+            int gx = _gAxis == 0 ? Mathf.RoundToInt(_gAlong / 100f) : _gK, gz = _gAxis == 0 ? _gK : Mathf.RoundToInt(_gAlong / 100f);
+            int best = 2; float bestCost = float.MaxValue;
+            for (int t = -1; t <= 1; t++)
+            {
+                if ((t == 0 && !s) || (t == -1 && !l) || (t == 1 && !r)) continue;
+                int na = axis, nd = dir;
+                if (t != 0) AfterTurn(axis, dir, t, out na, out nd);
+                int nx = ix + (na == 0 ? nd : 0), nz = iz + (na == 1 ? nd : 0);
+                float cost = Mathf.Abs(nx - gx) + Mathf.Abs(nz - gz);
+                int nk = na == 0 ? iz : ix;
+                if (na == _gAxis && nk == _gK && nd == _gDir)
+                {
+                    float ahead = (_gAlong - MegaWorld.Street(na == 0 ? ix : iz)) * nd;
+                    cost -= ahead > 0f ? 3f : 0.5f;   // turning onto the destination street, heading the right way
+                }
+                visits.TryGetValue(VKey(nx, nz), out int seen);
+                cost += seen * 6f + (t != 0 ? 0.15f : 0f);
+                if (cost < bestCost) { bestCost = cost; best = t; }
+            }
+            return best;
+        }
+
+        /// <summary>Works out the rest of the route (for the map line, distance and arrival time).</summary>
+        private void UpdateRoute()
+        {
+            Route.Clear(); RouteMeters = 0; RouteTruncated = false;
+            if (Mine == null || !HasDest) return;
+            var c = Mine;
+            int axis = c.Axis, k = c.K, dir = c.Dir;
+            float along = LaneAlong(c);
+            Vector3 cur = c.T.position;
+            Route.Add(cur);
+            var visits = new Dictionary<long, int>(_visits);
+            for (int step = 0; step < 600; step++)
+            {
+                if (axis == _gAxis && k == _gK && dir == _gDir && (_gAlong - along) * dir >= -2f && (_gAlong - along) * dir < 101f)
+                {
+                    Vector3 end = LanePos(axis, k, dir, _gAlong, OuterLane);
+                    RouteMeters += (end - cur).magnitude; Route.Add(end);
+                    return;
+                }
+                int nextIdx = dir > 0 ? Mathf.FloorToInt(along / 100f) + 1 : Mathf.CeilToInt(along / 100f) - 1;
+                float next = MegaWorld.Street(nextIdx);
+                Vector3 p = LanePos(axis, k, dir, next, 0f);
+                RouteMeters += (p - cur).magnitude; Route.Add(p); cur = p;
+                var probe = new Car { Axis = axis, K = k, Dir = dir };
+                bool s = TurnRoadOk(probe, nextIdx, 0), r = TurnRoadOk(probe, nextIdx, 1), l = TurnRoadOk(probe, nextIdx, -1);
+                int t = NavChoice(axis, k, dir, nextIdx, s, l, r, visits, true);
+                if (t == 2) { dir = -dir; along = next; continue; }
+                if (t != 0)
+                {
+                    AfterTurn(axis, dir, t, out int na, out int nd);
+                    int nk = nextIdx;
+                    along = MegaWorld.Street(k);
+                    axis = na; dir = nd; k = nk;
+                }
+                else along = next;
+            }
+            // too far to work out every turn: the rest as the crow flies (Manhattan)
+            RouteTruncated = true;
+            Vector3 goal = LanePos(_gAxis, _gK, _gDir, _gAlong, OuterLane);
+            RouteMeters += Mathf.Abs(goal.x - cur.x) + Mathf.Abs(goal.z - cur.z);
+            Route.Add(goal);
+        }
+
+        private void Arrive()
+        {
+            var c = Mine;
+            Navigating = false;
+            SelfDriving = false;
+            c.Lanes = false;
+            _parkTarget = LanePos(_gAxis, _gK, _gDir, _gAlong, CurbPark);
+            _parkPhase = 1;
+            Status = "Parking at " + DestName;
+            GameAudio.Play("tie", 0.8f, 1.1f);
+            TagPopup.Show("You have arrived at " + DestName + "!  Parking...", new Color(0.2f, 0.8f, 0.35f));
+            HasDest = false; Route.Clear();
+        }
+
         // ================================================================== you driving
 
         public void Enter(Car c)
@@ -553,7 +723,7 @@ namespace TagGame.Mega
             Inside = true;
             ApplyCamera();
             BuildUi();
-            _panel.SetActive(true);
+            if (CarScreen.I != null) CarScreen.I.Show(true); else _panel.SetActive(true);
             GameAudio.Play("pickup", 0.6f, 0.6f);
             TagPopup.Show("Driving the " + ModelName(c.Model) + "!  W/S drive, A/D steer, Q/R indicators, F self-driving, P auto park, C camera, E get out", new Color(0.2f, 0.6f, 0.95f));
         }
@@ -563,6 +733,7 @@ namespace TagGame.Mega
             var c = Mine;
             if (c == null) return;
             _noEnterUntil = Time.unscaledTime + 0.6f;
+            CancelNav();
             c.Signal = 0; c.ManualSignal = 0;
             Mine = null; SelfDriving = false; _parkPhase = 0; ClearSpots();
             if (c.Interact != null) c.Interact.enabled = true;
@@ -574,6 +745,7 @@ namespace TagGame.Mega
             if (_hidden != null) foreach (var r in _hidden) if (r != null) r.enabled = true;
             if (_follow != null) { _follow.enabled = true; _follow.Offset = _savedOffset; }
             if (_panel != null) _panel.SetActive(false);
+            if (CarScreen.I != null) CarScreen.I.Show(false);
             if (_parkPanel != null) _parkPanel.SetActive(false);
             var g = MegaGame.I; if (g != null && g.Me != null) g.Me.CarMoving = false;
             Status = "";
@@ -602,6 +774,7 @@ namespace TagGame.Mega
             if (Mine == null) return;
             SelfDriving = !SelfDriving;
             _parkPhase = 0; ClearSpots();
+            if (!SelfDriving) Navigating = false;
             if (SelfDriving)
             {
                 SnapToLane(Mine);
@@ -725,7 +898,7 @@ namespace TagGame.Mega
 
         private void ManualStep(Car c, float dt)
         {
-            var kb = Keyboard.current; var pad = Gamepad.current;
+            var kb = CarScreen.Typing ? null : Keyboard.current; var pad = Gamepad.current;
             float throttle = 0f, steer = 0f; bool brake = false;
             if (kb != null)
             {
@@ -745,6 +918,7 @@ namespace TagGame.Mega
             if ((Mathf.Abs(throttle) > 0.1f || Mathf.Abs(steer) > 0.1f) && (SelfDriving || _parkPhase > 0))
             {
                 SelfDriving = false; c.Lanes = false; _parkPhase = 0; ClearSpots(); Status = "";
+                if (Navigating) { Navigating = false; TagPopup.Show("Navigation paused - press NAVIGATE again to carry on", new Color(0.6f, 0.6f, 0.6f)); }
                 TagPopup.Show("You took over the wheel", new Color(0.6f, 0.6f, 0.6f));
             }
             float max = c.Model == 1 ? 40f : 28f, acc = c.Model == 1 ? 14f : 8f;
@@ -812,7 +986,7 @@ namespace TagGame.Mega
             }
             if (Mine != null)
             {
-                var kb = Keyboard.current; var pad = Gamepad.current;
+                var kb = CarScreen.Typing ? null : Keyboard.current; var pad = Gamepad.current;
                 if (kb != null && kb.fKey.wasPressedThisFrame) ToggleSelfDriving();
                 if (kb != null && kb.pKey.wasPressedThisFrame) OpenAutoPark();
                 // indicators: Q left, R right, H hazards (press again to turn off)
@@ -954,7 +1128,7 @@ namespace TagGame.Mega
             _parkPanel.transform.SetParent(_canvas.transform, false);
             var pr = (RectTransform)_parkPanel.transform;
             pr.anchorMin = pr.anchorMax = pr.pivot = new Vector2(0.5f, 0f);
-            pr.anchoredPosition = new Vector2(0f, 375f); pr.sizeDelta = new Vector2(760f, 190f);
+            pr.anchoredPosition = new Vector2(0f, 420f); pr.sizeDelta = new Vector2(760f, 190f);
             _parkPanel.GetComponent<Image>().color = new Color(0.05f, 0.06f, 0.08f, 0.9f);
             MG.MakeText(_parkPanel.transform, "AUTO PARK - pick a spot (1-3), then START", 24, new Vector2(0.5f, 1f), new Vector2(0f, -24f), new Vector2(740f, 34f));
             _spotButtons.Clear();
@@ -995,6 +1169,8 @@ namespace TagGame.Mega
             foreach (var m in _spotMarks) if (m != null) m.position -= d;
             _parkTarget -= d;
             _lightsAt = 0f;
+            for (int i = 0; i < Route.Count; i++) Route[i] -= d;
+            if (HasDest) { GoalFromDest(); _visits.Clear(); }
         }
     }
 }

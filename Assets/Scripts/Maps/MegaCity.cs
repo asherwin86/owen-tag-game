@@ -101,45 +101,82 @@ namespace TagGame.Maps
         }
         private static float Hash01(uint seed, int a, int b, int c = 0) => (Hash(seed, a, b, c) & 0xFFFFFF) / 16777216f;
 
-        /// <summary>How built-up this spot is, 0 (countryside) .. 1 (downtown).</summary>
-        public static float Density(MegaWorld.Country c, float lx, float lz)
+        /// <summary>Perlin noise that stays sharp millions of metres from the centre (Unity's noise repeats every 256 units anyway).</summary>
+        public static float PN(double x, double z)
         {
-            if (c.Style == 3)
+            double a = x % 256.0, b = z % 256.0;
+            if (a < 0) a += 256.0; if (b < 0) b += 256.0;
+            return Mathf.PerlinNoise((float)a, (float)b);
+        }
+
+        /// <summary>How built-up this spot is, 0 (countryside) .. 1 (downtown).</summary>
+        public static float Density(MegaWorld.Country c, double lx, double lz)
+        {
+            if (c.Huge)
             {
-                float u = Mathf.PerlinNoise(lx / 9000f + c.Seed * 0.013f, lz / 9000f + 7.1f);
-                float v = Mathf.PerlinNoise(lx / 2500f + 3.3f, lz / 2500f + c.Seed * 0.007f);
-                return Mathf.Clamp01((u * 0.75f + v * 0.35f - 0.42f) * 2.2f);
+                float u = PN(lx / 9000.0 + c.Seed * 0.013, lz / 9000.0 + 7.1);
+                float v = PN(lx / 2500.0 + 3.3, lz / 2500.0 + c.Seed * 0.007);
+                float bias = c.Style == 4 ? 0.06f : 0f;   // Mega Earth: a little more city
+                return Mathf.Clamp01((u * 0.75f + v * 0.35f - 0.42f + bias) * 2.2f);
             }
-            float r = Mathf.Sqrt(lx * lx + lz * lz) / c.Half;
-            float n = Mathf.PerlinNoise(lx / 1800f + c.Seed * 0.01f, lz / 1800f + 1.7f);
+            float r = (float)(System.Math.Sqrt(lx * lx + lz * lz) / c.Half);
+            float n = PN(lx / 1800.0 + c.Seed * 0.01, lz / 1800.0 + 1.7);
             return Mathf.Clamp01(1.05f - r * 0.9f + (n - 0.5f) * 0.5f);
+        }
+
+        [System.ThreadStatic] private static List<MegaWorld.V2d> _apTmp;
+
+        /// <summary>The airport whose runway area covers this country-relative point (within rx/rz), if any.</summary>
+        public static bool AirportAt(MegaWorld.Country c, double lx, double lz, double rx, double rz, out MegaWorld.V2d ap)
+        {
+            if (_apTmp == null) _apTmp = new List<MegaWorld.V2d>();
+            MegaWorld.AirportsNear(c, lx, lz, System.Math.Max(rx, rz) + 10.0, _apTmp);
+            foreach (var a in _apTmp) if (System.Math.Abs(lx - a.x) < rx && System.Math.Abs(lz - a.y) < rz) { ap = a; return true; }
+            ap = default;
+            return false;
         }
 
         /// <summary>What a chunk is. ci/cj count chunks from the country's -x/-z edge.</summary>
         public static ChunkKind KindOf(MegaWorld.Country c, int ci, int cj)
         {
-            float lx = -c.Half + (ci + 0.5f) * MegaWorld.ChunkSize, lz = -c.Half + (cj + 0.5f) * MegaWorld.ChunkSize;
-            foreach (var a in c.Airports)
-                if (Mathf.Abs(lx - a.x) < 1500f && Mathf.Abs(lz - a.y) < 250f) return ChunkKind.Airport;
-            foreach (var a in c.Airports)   // keep the land around airports dry
-                if (Mathf.Abs(lx - a.x) < 2500f && Mathf.Abs(lz - a.y) < 1000f) return ChunkKind.City;
-            float water = Mathf.PerlinNoise(lx / 3200f + c.Seed * 0.021f, lz / 3200f + 5.5f);
-            float thr = c.Style == 1 ? 0.6f : (c.Style == 3 ? 0.66f : 0.72f);
+            double lx = -c.Half + (ci + 0.5) * MegaWorld.ChunkSize, lz = -c.Half + (cj + 0.5) * MegaWorld.ChunkSize;
+            if (AirportAt(c, lx, lz, 1500, 250, out _)) return ChunkKind.Airport;
+            if (AirportAt(c, lx, lz, 2500, 1000, out _)) return ChunkKind.City;   // keep the land around airports dry
+            float water = PN(lx / 3200.0 + c.Seed * 0.021, lz / 3200.0 + 5.5);
+            float thr = c.Style == 1 ? 0.6f : (c.Huge ? 0.66f : 0.72f);
             if (water > thr) return ChunkKind.Lake;
             float h = Hash01(c.Seed, ci, cj, 7);
             float d = Density(c, lx, lz);
-            if (c.Style == 3 && d < 0.12f)
+            if (c.Huge && d < 0.12f)
             {
-                float f = Mathf.PerlinNoise(lx / 4000f + 11.2f, lz / 4000f + c.Seed * 0.003f);
+                float f = PN(lx / 4000.0 + 11.2, lz / 4000.0 + c.Seed * 0.003);
                 return f > 0.5f ? ChunkKind.Forest : ChunkKind.Farm;
             }
-            if (h < (c.Style == 3 ? 0.08f : 0.06f)) return ChunkKind.Park;
-            if (c.Style == 3 && d < 0.35f) return ChunkKind.Town;
+            if (h < (c.Huge ? 0.08f : 0.06f)) return ChunkKind.Park;
+            if (c.Huge && d < 0.35f) return ChunkKind.Town;
             return ChunkKind.City;
         }
 
+        /// <summary>The school campus and mall in a city chunk (same answer the builder uses). bi/bj = -1 when there is none.</summary>
+        public static void ChunkFeatures(MegaWorld.Country c, int ci, int cj, ChunkKind kind, out int schoolI, out int schoolJ, out int mallI, out int mallJ)
+        {
+            schoolI = schoolJ = mallI = mallJ = -1;
+            if (kind != ChunkKind.City && kind != ChunkKind.Town) return;
+            var r = new Rng(Hash(c.Seed, ci, cj, 1));
+            bool town = kind == ChunkKind.Town;
+            if (r.Chance(town ? 0.2f : 0.32f)) { schoolI = r.Int(0, 4); schoolJ = r.Int(0, 4); }
+            if (!town && r.Chance(0.08f))
+            {
+                int bi = r.Int(0, 4), bj = r.Int(0, 4);
+                bool clash = schoolI >= 0 && Mathf.Abs(bi - schoolI) <= 1 && Mathf.Abs(bj - schoolJ) <= 1;
+                if (!clash) { mallI = bi; mallJ = bj; }
+            }
+        }
+
+        public static uint PlaceHash(uint seed, int a, int b, int c) => Hash(seed, a, b, c);
+
         /// <summary>Height of the tallest thing on a block (for the skyline and for planes not flying through cities).</summary>
-        public static float BlockHeight(MegaWorld.Country c, ChunkKind k, float lx, float lz, int bi, int bj, int ci, int cj)
+        public static float BlockHeight(MegaWorld.Country c, ChunkKind k, double lx, double lz, int bi, int bj, int ci, int cj)
         {
             if (k == ChunkKind.Lake || k == ChunkKind.Farm || k == ChunkKind.Airport) return 0f;
             if (k == ChunkKind.Park || k == ChunkKind.Forest) return 9f;
@@ -159,7 +196,7 @@ namespace TagGame.Maps
         {
             WorldMaterials();
             var c = MegaWorld.Countries[rec.Country];
-            float lx0 = -c.Half + rec.CI * MegaWorld.ChunkSize, lz0 = -c.Half + rec.CJ * MegaWorld.ChunkSize;   // country-relative corner
+            double lx0 = -c.Half + (double)rec.CI * MegaWorld.ChunkSize, lz0 = -c.Half + (double)rec.CJ * MegaWorld.ChunkSize;   // country-relative corner
             Vector3 o = MegaWorld.ToLocal(c.CX + lx0, c.CZ + lz0);   // scene position of the corner
             float x0 = o.x, z0 = o.z, S = MegaWorld.ChunkSize;
             var kind = KindOf(c, rec.CI, rec.CJ);
@@ -171,7 +208,7 @@ namespace TagGame.Maps
             _mb = new MegaBatcher(rec.Root, rec.Grid);
             _mr = new Rng(Hash(c.Seed, rec.CI, rec.CJ, 1));
             _spots.Clear();
-            int maxCi = Mathf.RoundToInt(c.Half * 2f / S) - 1;
+            int maxCi = (int)System.Math.Round(c.Half * 2.0 / S) - 1;
 
             // ground (with a hole for a lake), and the sea wall on the country's edge
             var holes = new List<Rect>();
@@ -203,23 +240,19 @@ namespace TagGame.Maps
                         var used = new bool[5, 5];
                         float dC = Density(c, lx0 + S * 0.5f, lz0 + S * 0.5f);
                         bool town = kind == ChunkKind.Town;
-                        // a school campus (2x2 blocks) in many chunks
-                        if (_mr.Chance(town ? 0.2f : 0.32f))
+                        // a school campus and maybe a mall (2x2 blocks each): the same spots the car map knows about
+                        ChunkFeatures(c, rec.CI, rec.CJ, kind, out int si, out int sj, out int mi, out int mj);
+                        if (si >= 0)
                         {
-                            int bi = _mr.Int(0, 4), bj = _mr.Int(0, 4);
-                            for (int a = bi; a < bi + 2; a++) for (int b = bj; b < bj + 2; b++) used[a, b] = true;
-                            BuildSchoolCampus(x0 + 100f * (bi + 1), z0 + 100f * (bj + 1), "School " + (Hash(c.Seed, rec.CI, rec.CJ, 9) % 900 + 100));
+                            for (int a = si; a < si + 2; a++) for (int b = sj; b < sj + 2; b++) used[a, b] = true;
+                            BuildSchoolCampus(x0 + 100f * (si + 1), z0 + 100f * (sj + 1), MegaPlaces.SchoolName(rec.Country, rec.CI, rec.CJ));
                             yield return null;
                         }
-                        if (!town && _mr.Chance(0.08f))
+                        if (mi >= 0)
                         {
-                            int bi = _mr.Int(0, 4), bj = _mr.Int(0, 4);
-                            if (!used[bi, bj] && !used[bi + 1, bj] && !used[bi, bj + 1] && !used[bi + 1, bj + 1])
-                            {
-                                for (int a = bi; a < bi + 2; a++) for (int b = bj; b < bj + 2; b++) used[a, b] = true;
-                                BuildMall(x0 + 100f * (bi + 1), z0 + 100f * (bj + 1));
-                                yield return null;
-                            }
+                            for (int a = mi; a < mi + 2; a++) for (int b = mj; b < mj + 2; b++) used[a, b] = true;
+                            BuildMall(x0 + 100f * (mi + 1), z0 + 100f * (mj + 1));
+                            yield return null;
                         }
                         int towers = town ? 0 : (dC > 0.6f ? 2 : (dC > 0.35f ? 1 : 0));
                         for (int t = 0; t < towers; t++)
@@ -421,12 +454,11 @@ namespace TagGame.Maps
             for (int k = 0; k < 4; k++) _spots.Add(new Vector3(bx + _mr.Range(-30f, 30f), 0f, bz - 12f));
         }
 
-        private void AirportChunk(MegaWorld.Country c, ChunkRecord rec, float lx0, float lz0, float x0, float z0, float S)
+        private void AirportChunk(MegaWorld.Country c, ChunkRecord rec, double lx0, double lz0, float x0, float z0, float S)
         {
             // which airport, and where its runway is in this chunk
-            Vector2 ap = c.Airports[0]; float bd = float.MaxValue;
-            foreach (var a in c.Airports) { float d = Mathf.Abs(lx0 + 250f - a.x) + Mathf.Abs(lz0 + 250f - a.y); if (d < bd) { bd = d; ap = a; } }
-            float cxLocal = x0 + (ap.x - lx0), runwayZ = z0 + (ap.y - lz0);   // scene coords of the airport centre
+            AirportAt(c, lx0 + 250.0, lz0 + 250.0, 1500, 250, out var ap);
+            float cxLocal = x0 + (float)(ap.x - lx0), runwayZ = z0 + (float)(ap.y - lz0);   // scene coords of the airport centre
             _mb.Patch(x0 + S * 0.5f, z0 + S * 0.5f, S, S - 2f, _mTarmac, 0.02f);
             float rx0 = Mathf.Max(x0, cxLocal - 1400f), rx1 = Mathf.Min(x0 + S, cxLocal + 1400f);
             if (rx1 > rx0)
@@ -562,7 +594,7 @@ namespace TagGame.Maps
             WorldMaterials();
             var c = MegaWorld.Countries[country];
             var mb = new MegaBatcher(root, null);
-            int perTile = 4, maxC = Mathf.RoundToInt(c.Half * 2f / MegaWorld.ChunkSize);
+            int perTile = 4, maxC = (int)System.Math.Round(c.Half * 2.0 / MegaWorld.ChunkSize);
             for (int a = 0; a < perTile; a++)
                 for (int b = 0; b < perTile; b++)
                 {
@@ -570,7 +602,7 @@ namespace TagGame.Maps
                     if (ci < 0 || cj < 0 || ci >= maxC || cj >= maxC) continue;
                     if (skip != null && skip(ci, cj)) continue;
                     var kind = KindOf(c, ci, cj);
-                    float lx0 = -c.Half + ci * MegaWorld.ChunkSize, lz0 = -c.Half + cj * MegaWorld.ChunkSize;
+                    double lx0 = -c.Half + (double)ci * MegaWorld.ChunkSize, lz0 = -c.Half + (double)cj * MegaWorld.ChunkSize;
                     Vector3 o = MegaWorld.ToLocal(c.CX + lx0, c.CZ + lz0);
                     if (kind == ChunkKind.Lake)
                     {

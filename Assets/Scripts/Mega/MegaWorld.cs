@@ -40,12 +40,18 @@ namespace TagGame.Mega
         {
             public string Name;
             public double CX, CZ;         // world centre (multiple of 500)
-            public float Half;            // half size in metres (multiple of 500)
+            public double Half;           // half size in metres (multiple of 500)
             public uint Seed;
-            public int Style;             // 0 Mega City, 1 Harbor City, 2 Sky City, 3 Super Mega World
-            public readonly List<Vector2> Airports = new List<Vector2>();   // runway centres, world coords relative to CX/CZ
+            public int Style;             // 0 Mega City, 1 Harbor City, 2 Sky City, 3 Super Mega World, 4 Mega Earth
+            public readonly List<V2d> Airports = new List<V2d>();   // named airports: runway centres relative to CX/CZ
+            public double AirportGrid;    // big worlds: also an airport roughly every this many metres (0 = none)
+            public bool Huge => Style >= 3;
+            public float SizeKm => (float)(Half * 2.0 / 1000.0);
             public bool Contains(double x, double z) => System.Math.Abs(x - CX) < Half && System.Math.Abs(z - CZ) < Half;
         }
+
+        /// <summary>A position with double precision (for places millions of metres away).</summary>
+        public struct V2d { public double x, y; public V2d(double x, double y) { this.x = x; this.y = y; } }
 
         public static readonly Country[] Countries = MakeCountries();
 
@@ -57,12 +63,43 @@ namespace TagGame.Mega
                 new Country { Name = "Harbor City",      CX = 24000,  CZ = 0,     Half = 5000f,  Seed = 2202, Style = 1 },
                 new Country { Name = "Sky City",         CX = 12000,  CZ = 21000, Half = 5000f,  Seed = 3303, Style = 2 },
                 new Country { Name = "Super Mega World", CX = -80000, CZ = 0,     Half = 50000f, Seed = 4404, Style = 3 },
+                // a million kilometres across: 25 times around the Earth
+                new Country { Name = "Mega Earth",       CX = 500100000, CZ = 0,  Half = 500000000, Seed = 5505, Style = 4, AirportGrid = 40000 },
             };
             // airports: runway along x, centred on these spots (one for each city, a grid of them in the Super Mega World)
-            for (int i = 0; i < 3; i++) c[i].Airports.Add(new Vector2(0f, -2250f));
+            for (int i = 0; i < 3; i++) c[i].Airports.Add(new V2d(0, -2250));
             for (int ax = -2; ax <= 2; ax++)
                 for (int az = -2; az <= 2; az++)
-                    c[3].Airports.Add(new Vector2(ax * 20000f, az * 20000f - 2250f));
+                    c[3].Airports.Add(new V2d(ax * 20000.0, az * 20000.0 - 2250.0));
+            c[4].Airports.Add(new V2d(0, -2250));
+            return c;
+        }
+
+        /// <summary>Airports near a country-relative point: the named ones plus (in Mega Earth) one every AirportGrid metres.</summary>
+        public static void AirportsNear(Country c, double lx, double lz, double r, List<V2d> into)
+        {
+            into.Clear();
+            foreach (var a in c.Airports) if (System.Math.Abs(a.x - lx) < r && System.Math.Abs(a.y - lz) < r) into.Add(a);
+            if (c.AirportGrid <= 0) return;
+            double g = c.AirportGrid;
+            long x0 = (long)System.Math.Floor((lx - r) / g), x1 = (long)System.Math.Ceiling((lx + r) / g);
+            long z0 = (long)System.Math.Floor((lz - r) / g), z1 = (long)System.Math.Ceiling((lz + r) / g);
+            for (long ix = x0; ix <= x1; ix++)
+                for (long iz = z0; iz <= z1; iz++)
+                {
+                    if (ix == 0 && iz == 0) continue;
+                    uint h = (uint)(ix * 73856093L ^ iz * 19349663L ^ c.Seed);
+                    h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
+                    if (h % 10 >= 6) continue;     // about 6 in 10 grid spots have an airport
+                    var a = new V2d(ix * g, iz * g - 2250.0);
+                    if (System.Math.Abs(a.x) > c.Half - 4000 || System.Math.Abs(a.y) > c.Half - 4000) continue;
+                    if (System.Math.Abs(a.x - lx) < r && System.Math.Abs(a.y - lz) < r) into.Add(a);
+                }
+        }
+
+        private static Country[] Unused()
+        {
+            var c = new Country[0];
             return c;
         }
 

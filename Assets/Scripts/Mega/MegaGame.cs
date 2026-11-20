@@ -145,6 +145,7 @@ namespace TagGame.Mega
             go.AddComponent<WorldTravel>();
             go.AddComponent<MegaCars>();
             go.AddComponent<MegaDance>();
+            go.AddComponent<CarScreen>();
         }
 
         private void Awake()
@@ -210,7 +211,7 @@ namespace TagGame.Mega
 
             // the World: put the starting country's airport near the scene origin, then build around it
             var c = MegaWorld.Countries[Mathf.Clamp(StartCountry, 0, MegaWorld.Countries.Length - 1)];
-            Vector2 ap = c.Airports[c.Airports.Count / 2];
+            var ap = c.Airports[c.Airports.Count / 2];
             MegaWorld.OriginX = c.CX + System.Math.Round((ap.x + 250.0) / 500.0) * 500.0;
             MegaWorld.OriginZ = c.CZ + System.Math.Round(ap.y / 500.0) * 500.0;
             MegaWorld.CurrentCountry = System.Array.IndexOf(MegaWorld.Countries, c);
@@ -276,7 +277,7 @@ namespace TagGame.Mega
             if (country < 0) return;
             var c = MegaWorld.Countries[country];
             // the crowd's area: big enough for everyone, but not so big that the streets around you are empty
-            float rh = Mathf.Min(c.Half, Mathf.Max(1500f, Mathf.Sqrt(Mathf.Max(1, SimulatedPlayers)) * 25f));
+            float rh = (float)System.Math.Min(c.Half, Mathf.Max(1500f, Mathf.Sqrt(Mathf.Max(1, SimulatedPlayers)) * 25f));
             rh = Mathf.Round(rh / 100f) * 100f;
             double rcx = c.CX, rcz = c.CZ;
             if (rh < c.Half - 1f)
