@@ -24,6 +24,11 @@ namespace TagGame.Mega
         public Vector3 Vel;
         public float DanceUntil; public int DanceType;
         public bool Dancing => Time.time < DanceUntil;
+        // smarter bots: don't hang around the same person
+        public Agent Avoid; public float AvoidUntil;          // ignore / keep away from this one for a while
+        public Agent ChaseTarget; public float ChaseSince;     // who I've been chasing, and since when
+        public Agent Near; public float NearSince;            // who has been close to me, and since when
+        public float LeaveUntil; public Vector3 LeaveGoal;    // walking away to somewhere new
         public Vector3 Pos;            // feet
         public float Yaw;
         public bool It;
@@ -66,7 +71,7 @@ namespace TagGame.Mega
         /// Above this, the rest of the players are counted across the world, not walked around one by one.</summary>
         public const int MaxSimulated = 1000000;
         private const int AutoStart = 10000, AutoMax = 10000;
-        private const float FreezeSeconds = 1.5f, NoBackSeconds = 3.5f, KnockSeconds = 4f, TieSeconds = 1.5f;
+        private const float FreezeSeconds = 1.5f, NoBackSeconds = 6f, KnockSeconds = 4f, TieSeconds = 1.5f;
         private const float BotSpeed = 5.6f, SprintMul = 1.6f, UntiedMul = 0.45f, SneakerMul = 1.25f;
         private static readonly string[] FirstNames = { "Mia", "Leo", "Ava", "Max", "Zoe", "Sam", "Ivy", "Jay", "Kai", "Lily", "Noah", "Ella", "Finn", "Ruby", "Theo", "Isla", "Ben", "Cleo", "Eli", "Nina", "Owen", "Rosa", "Tom", "Uma", "Vic", "Wes", "Yara", "Zac", "Amy", "Ray" };
         private static readonly Color[] BotColors =
@@ -614,6 +619,7 @@ namespace TagGame.Mega
             victim.Out = true; victim.OutBy = tagger; victim.OutPos = victim.Pos;
             victim.Tying = false; victim.Path = null; victim.Script = null; victim.HasGoal = false;
             tagger.Tags++;
+            if (!tagger.IsPlayer) LeaveFrom(tagger, victim.Pos, 5f);
             float dist = Me != null ? Vector3.Distance(victim.Pos, Me.Pos) : 0f;
             if (dist < 60f || tagger.IsPlayer || victim.IsPlayer)
             {
@@ -651,7 +657,7 @@ namespace TagGame.Mega
         {
             a.Out = false; a.OutBy = null;
             a.SafeUntil = Time.time + 2.5f;
-            if (!a.IsPlayer) { a.Pos = a.OutPos; return; }
+            if (!a.IsPlayer) { a.Pos = a.OutPos; LeaveFrom(a, a.Pos + Random.insideUnitSphere * 3f, 5f); return; }
             Watching = null;
             var cam = FindFirstObjectByType<FollowCamera>();
             if (cam != null) cam.SetTarget(_player.transform);
@@ -675,6 +681,11 @@ namespace TagGame.Mega
             victim.NoBackFrom = it; victim.NoBackUntil = Time.time + NoBackSeconds;
             victim.Target = null; it.Target = null;
             victim.Tying = false;
+            // no tag-backs and no standing around together: the new IT leaves the old one alone for a while,
+            // and the one who just passed the tag gets out of there
+            victim.Avoid = it; victim.AvoidUntil = Time.time + 20f;
+            it.Avoid = victim; it.AvoidUntil = Time.time + 20f;
+            if (!it.IsPlayer) LeaveFrom(it, victim.Pos, 6f);
             float dist = Me != null ? Vector3.Distance(victim.Pos, Me.Pos) : 0f;
             if (dist < 60f || it.IsPlayer || victim.IsPlayer)
             {
@@ -1078,10 +1089,74 @@ namespace TagGame.Mega
             return best;
         }
 
+        /// <summary>Walk (sprint) away from a spot to somewhere new for a few seconds.</summary>
+        private void LeaveFrom(Agent a, Vector3 from, float seconds)
+        {
+            Vector3 away = a.Pos - from; away.y = 0f;
+            if (away.sqrMagnitude < 0.01f) away = new Vector3(Random.Range(-1f, 1f), 0f, Random.Range(-1f, 1f));
+            away = Quaternion.Euler(0f, Random.Range(-50f, 50f), 0f) * away.normalized;
+            a.LeaveGoal = a.Pos + away * Random.Range(80f, 160f);
+            a.LeaveUntil = Time.time + seconds;
+            a.Path = null; a.Target = null;
+        }
+
+        /// <summary>How much less interesting someone is to chase (recently swapped the tag, chased too long, can't tag back).</summary>
+        private static float ChaseCost(Agent a, Agent o, float now)
+        {
+            float k = 1f;
+            if (o == a.Avoid && now < a.AvoidUntil) k *= 40f;
+            if (o == a.NoBackFrom && now < a.NoBackUntil + 10f) k *= 40f;
+            if (now < o.SafeUntil) k *= 10f;
+            return k;
+        }
+
+        /// <summary>Keep track of who I'm chasing: after 14 seconds without catching them, give up and pick someone else.</summary>
+        private static void TrackChase(Agent a, Agent best, float now)
+        {
+            if (best != a.ChaseTarget) { a.ChaseTarget = best; a.ChaseSince = now; return; }
+            if (best != null && now - a.ChaseSince > 14f)
+            {
+                a.Avoid = best; a.AvoidUntil = now + 15f;
+                a.ChaseTarget = null;
+            }
+        }
+
+        /// <summary>Been right next to the same person for ages (and nothing is happening)? Go somewhere else.</summary>
+        private void CheckCrowding(Agent a, float now)
+        {
+            Agent closest = null; float cd = 8f * 8f;
+            foreach (var o in Gather(_coarse, a.Pos, 8f, _tmpB))
+            {
+                if (o == a || o.Out) continue;
+                float d = (o.Pos - a.Pos).sqrMagnitude;
+                if (d < cd) { cd = d; closest = o; }
+            }
+            if (closest == null) { a.Near = null; return; }
+            if (closest != a.Near) { a.Near = closest; a.NearSince = now; return; }
+            if (now - a.NearSince > 6f)
+            {
+                a.Avoid = closest; a.AvoidUntil = now + 25f;
+                LeaveFrom(a, closest.Pos, 8f);
+                a.Near = null;
+            }
+        }
+
         private void Think(Agent a, bool near)
         {
             float now = Time.time;
             a.WantSprint = false;
+            CheckCrowding(a, now);
+            if (now < a.LeaveUntil)
+            {
+                // walking off somewhere new - unless an IT is right on top of a runner, then run from it
+                var danger = !Endless && !a.It ? NearestIt(a, 12f) : null;
+                if (danger == null || danger == a.Avoid)
+                {
+                    a.Goal = a.LeaveGoal; a.HasGoal = true; a.WantSprint = true;
+                    if (a.It && Random.value < 0.5f) a.LeaveUntil = Mathf.Min(a.LeaveUntil, now + 1f);   // ITs get back to hunting sooner
+                    return;
+                }
+            }
             if (Endless)
             {
                 // everyone hunts: chase whoever is closest (you a bit more often), sprint when close
@@ -1089,10 +1164,12 @@ namespace TagGame.Mega
                 foreach (var o in Gather(_coarse, a.Pos, 70f, _tmpB))
                 {
                     if (o == a || o.Out || o.Away || o.CarMoving) continue;
-                    float d = (o.Pos - a.Pos).sqrMagnitude * (o.IsPlayer ? 0.7f : 1f) * (o.Knocked || o.Untied ? 0.5f : 1f);
+                    float d = (o.Pos - a.Pos).sqrMagnitude * (o.IsPlayer ? 0.7f : 1f) * (o.Knocked || o.Untied ? 0.5f : 1f) * ChaseCost(a, o, now);
                     if (Mathf.Abs(o.Pos.y - a.Pos.y) > 2f) d *= 3f;
                     if (d < pd) { pd = d; prey = o; }
                 }
+                TrackChase(a, prey, now);
+                if (a.ChaseTarget == null) prey = null;
                 a.Target = prey;
                 if (prey != null) { a.Goal = prey.Pos; a.HasGoal = true; a.WantSprint = pd < 25f * 25f; return; }
             }
@@ -1111,12 +1188,14 @@ namespace TagGame.Mega
                 {
                     if (o.It || o == a || o.Away) continue;
                     if (o == a.NoBackFrom && now < a.NoBackUntil) continue;
-                    float d = (o.Pos - a.Pos).sqrMagnitude;
+                    float d = (o.Pos - a.Pos).sqrMagnitude * ChaseCost(a, o, now);
                     if (Mathf.Abs(o.Pos.y - a.Pos.y) > 2f) d *= 3f;      // other floors take longer to reach
                     if (o.IsPlayer) d *= 0.6f;
                     if (o.Knocked || o.Untied) d *= 0.5f;
                     if (d < bd) { bd = d; best = o; }
                 }
+                TrackChase(a, best, now);
+                if (a.ChaseTarget == null && best != null) { a.Target = null; LeaveFrom(a, best.Pos, 2f); return; }
                 a.Target = best;
                 if (best != null)
                 {
