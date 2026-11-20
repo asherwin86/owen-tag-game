@@ -27,7 +27,7 @@ namespace TagGame.Mega
     {
         private GameFlowUI _flow;
         private GameObject _canvas, _setup, _hud, _pause, _results, _loading, _touch;
-        private Button[] _botButtons, _countryButtons;
+        private Button[] _botButtons, _countryButtons, _modeButtons;
         private Image _hpFill, _armFill, _flash, _tieFill, _reticle;
         private TMP_Text _hpText, _timer, _rank, _feed, _prompt, _laces, _resultText, _info;
         private readonly Image[] _slotBg = new Image[4];
@@ -75,9 +75,15 @@ namespace TagGame.Mega
             // ---------------- setup
             _setup = MG.MakePanel(root, "MegaSetup", new Color(0.04f, 0.05f, 0.08f, 0.93f));
             var s = _setup.transform;
-            var title = MG.MakeText(s, "MEGA MODE", 92, MG.C, new Vector2(0f, 360f), new Vector2(1200f, 120f));
+            var title = MG.MakeText(s, "MEGA MODE", 92, MG.C, new Vector2(0f, 410f), new Vector2(1200f, 120f));
             title.color = new Color(1f, 0.6f, 0.15f); title.fontStyle = FontStyles.Bold;
-            MG.MakeText(s, "A world of walled island countries: Mega City, Harbor City and Sky City (10 km each) and the 100 km Super Mega World.\nSchools, malls, towers with stairs and elevators, lakes, forests and airports - fly planes between countries. Up to 100 taggers at once.", 26, MG.C, new Vector2(0f, 262f), new Vector2(1600f, 90f)).color = new Color(0.85f, 0.88f, 0.92f);
+            MG.MakeText(s, "A world of walled island countries: Mega City, Harbor City and Sky City (10 km each) and the 100 km Super Mega World.\nSchools, malls, towers with stairs and elevators, lakes, forests and airports - fly planes between countries. Up to 100 taggers at once.", 24, MG.C, new Vector2(0f, 318f), new Vector2(1600f, 80f)).color = new Color(0.85f, 0.88f, 0.92f);
+            var ml = MG.MakeText(s, "MODE", 30, MG.C, new Vector2(-330f, 248f), new Vector2(200f, 44f)); ml.fontStyle = FontStyles.Bold;
+            _modeButtons = new[]
+            {
+                MG.MakeButton(s, "Normal\n<size=16>taggers vs runners, 10 min</size>", MG.C, new Vector2(-80f, 248f), new Vector2(260f, 64f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.SetEndless(false); RefreshBots(); }, 26),
+                MG.MakeButton(s, "Endless\n<size=16>everyone tags, never ends</size>", MG.C, new Vector2(200f, 248f), new Vector2(260f, 64f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.SetEndless(true); RefreshBots(); }, 26),
+            };
             MG.MakeText(s, "PLAYERS", 30, MG.C, new Vector2(0f, 190f), new Vector2(600f, 44f)).fontStyle = FontStyles.Bold;
             _botButtons = new Button[MegaGame.BotChoices.Length];
             for (int i = 0; i < _botButtons.Length; i++)
@@ -97,7 +103,7 @@ namespace TagGame.Mega
                 var c = MegaWorld.Countries[i];
                 _countryButtons[i] = MG.MakeButton(s, c.Name + "\n<size=18>" + (c.Half * 2f / 1000f).ToString("0") + " km</size>", MG.C, new Vector2((i - (_countryButtons.Length - 1) * 0.5f) * 300f, -45f), new Vector2(280f, 80f), new Color(0.2f, 0.2f, 0.28f), () => { MegaGame.I.StartCountry = id; RefreshBots(); }, 26);
             }
-            MG.MakeText(s, "<b>Controls</b>   WASD move · Shift sprint · Ctrl/Q dash · <b>1-4</b> slots · <b>Click / F</b> fire or use · <b>E</b> vending, lockers, swap, planes · <b>T</b> hold to tie laces · Esc pause\nPlanes: Shift/Ctrl power · W/S nose · A/D turn · E get out.  Controller: RB fire · B use · hold Y tie laces · D-pad slots · RT/LT power",
+            MG.MakeText(s, "<b>Controls</b>   WASD move · Shift sprint · Ctrl/Q dash · <b>1-4</b> slots · <b>Click / F</b> fire or use · <b>E</b> vending, lockers, swap, cars, planes · <b>T</b> hold to tie laces · <b>G</b> dance · Esc pause\nCars: W/S drive · A/D steer · F self-driving · P auto park · C camera · E get out.   Planes: Shift/Ctrl power · W/S nose · A/D turn.   Wait for green at crossings!",
                 20, MG.C, new Vector2(0f, -140f), new Vector2(1700f, 80f)).color = new Color(0.7f, 0.75f, 0.8f);
             MG.MakeButton(s, "START", MG.C, new Vector2(0f, -250f), new Vector2(380f, 96f), new Color(0.15f, 0.6f, 0.3f), StartGame, 46);
             MG.MakeButton(s, "Back", MG.C, new Vector2(0f, -355f), new Vector2(240f, 60f), new Color(0.5f, 0.2f, 0.2f), CloseSetup, 28);
@@ -226,6 +232,8 @@ namespace TagGame.Mega
             int sel = MegaGame.I.BotChoice;
             for (int i = 0; i < _botButtons.Length; i++)
                 _botButtons[i].GetComponent<Image>().color = i == sel ? new Color(0.95f, 0.5f, 0.1f) : new Color(0.2f, 0.2f, 0.28f);
+            for (int i = 0; i < _modeButtons.Length; i++)
+                _modeButtons[i].GetComponent<Image>().color = (i == 1) == MegaGame.I.EndlessChoice ? new Color(0.85f, 0.25f, 0.45f) : new Color(0.2f, 0.2f, 0.28f);
             for (int i = 0; i < _countryButtons.Length; i++)
                 _countryButtons[i].GetComponent<Image>().color = i == MegaGame.I.StartCountry ? new Color(0.2f, 0.5f, 0.9f) : new Color(0.2f, 0.2f, 0.28f);
             long n = MegaGame.BotChoices[sel];
@@ -285,9 +293,9 @@ namespace TagGame.Mega
             _hpText.text = "<b>HEALTH " + Mathf.CeilToInt(me.Hp) + "</b>   armour " + Mathf.CeilToInt(me.Armour) + (mp != null && mp.SneakersOn ? "   <color=#FFA020>SNEAKERS</color>" : "");
 
             int secs = Mathf.CeilToInt(g.TimeLeft);
-            _timer.text = (secs / 60) + ":" + (secs % 60).ToString("00");
+            _timer.text = g.Endless ? "ENDLESS" : (secs / 60) + ":" + (secs % 60).ToString("00");
             _timer.color = secs <= 30 ? new Color(1f, 0.35f, 0.3f) : Color.white;
-            _rank.text = "Rank <b>" + g.MyRank().ToString("N0") + "</b> / " + g.TotalPlayers.ToString("N0") + "\n" + g.ItCount.ToString("N0") + " IT · bots " + g.BotCount.ToString("N0") + (g.AutoBots ? " (auto)" : "") + (g.CrowdMode ? "\n" + g.NearbyCount.ToString("N0") + " near you" : "") + " · " + Mathf.RoundToInt(g.Fps) + " fps";
+            _rank.text = (g.Endless ? "Tags <b>" + me.Tags + "</b>  ·  " : "") + "Rank <b>" + g.MyRank().ToString("N0") + "</b> / " + g.TotalPlayers.ToString("N0") + "\n" + g.ItCount.ToString("N0") + " IT · bots " + g.BotCount.ToString("N0") + (g.AutoBots ? " (auto)" : "") + (g.CrowdMode ? "\n" + g.NearbyCount.ToString("N0") + " near you" : "") + " · " + Mathf.RoundToInt(g.Fps) + " fps";
             var sb = new StringBuilder();
             foreach (var f in g.Feed) sb.Append(f).Append('\n');
             _feed.text = sb.ToString();
@@ -310,7 +318,7 @@ namespace TagGame.Mega
                 bool tying = me.Tying;
                 _tieBar.SetActive(tying);
                 if (tying) _tieFill.rectTransform.localScale = new Vector3(mp.TieProgress, 1f, 1f);
-                _laces.text = me.Knocked ? "<color=#B070FF>KNOCKED DOWN - easy to tag!</color>" : (me.Untied ? (tying ? "Tying your laces... (easy to tag!)" : "Shoelaces untied!  Hold T to tie them") : "");
+                _laces.text = me.Out ? "<color=#B070FF>YOU'RE OUT - watching " + (g.Watching != null ? g.Watching.Name : "") + "</color>" : me.Knocked ? "<color=#B070FF>KNOCKED DOWN - easy to tag!</color>" : (me.Untied ? (tying ? "Tying your laces... (easy to tag!)" : "Shoelaces untied!  Hold T to tie them") : "");
 
                 var cam = Camera.main;
                 bool showRet = mp.Locked != null && cam != null;

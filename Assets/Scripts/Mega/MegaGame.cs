@@ -15,6 +15,15 @@ namespace TagGame.Mega
         public string Name;
         public bool IsPlayer;
         public bool Away;              // flying in a plane: can't tag or be tagged, and earns no safe time
+        public bool InCar, CarMoving;  // in a car: can be tagged through the window, but not while it's moving
+        public bool Out;               // Endless mode: tagged out, watching until whoever tagged them is tagged
+        public Agent OutBy;
+        public Vector3 OutPos;
+        public int Tags;               // Endless mode score
+        public float SafeUntil;        // just came back in: can't be tagged for a moment
+        public Vector3 Vel;
+        public float DanceUntil; public int DanceType;
+        public bool Dancing => Time.time < DanceUntil;
         public Vector3 Pos;            // feet
         public float Yaw;
         public bool It;
@@ -37,7 +46,7 @@ namespace TagGame.Mega
         public GameObject Proxy;
         public bool Removed;
         public bool Knocked => Time.time < KnockedUntil;
-        public bool Busy => Knocked || Time.time < FrozenUntil || Tying;
+        public bool Busy => Knocked || Time.time < FrozenUntil || Tying || Out || Dancing;
     }
 
     /// <summary>
@@ -67,6 +76,13 @@ namespace TagGame.Mega
         };
 
         public bool Running { get; private set; }
+        /// <summary>Endless mode: everyone is a tagger, tagged players are out until whoever tagged them is tagged, and it never ends.</summary>
+        public bool Endless { get; private set; }
+        public bool EndlessChoice { get; private set; }
+        public void SetEndless(bool on) { EndlessChoice = on; PlayerPrefs.SetInt("TagGame.MegaEndless", on ? 1 : 0); PlayerPrefs.Save(); }
+        public Agent Watching { get; private set; }
+        private Transform _watchProxy;
+        private Renderer[] _myRenderers;
         public bool Paused { get; private set; }
         public bool Finished { get; private set; }
         public float TimeLeft { get; private set; }
@@ -127,6 +143,8 @@ namespace TagGame.Mega
             go.AddComponent<MegaGame>();
             go.AddComponent<MegaHud>();
             go.AddComponent<WorldTravel>();
+            go.AddComponent<MegaCars>();
+            go.AddComponent<MegaDance>();
         }
 
         private void Awake()
@@ -134,6 +152,7 @@ namespace TagGame.Mega
             I = this;
             _player = FindFirstObjectByType<PlayerController>();
             BotChoice = Mathf.Clamp(PlayerPrefs.GetInt("TagGame.MegaBots", 0), 0, BotChoices.Length - 1);
+            EndlessChoice = PlayerPrefs.GetInt("TagGame.MegaEndless", 0) == 1;
         }
 
         private void OnDestroy() { if (I == this) I = null; }
@@ -225,8 +244,10 @@ namespace TagGame.Mega
             _crowd.Init(rest, 0, _nextId, 0, 0, 1000f);
             RegionFor(MegaWorld.CurrentCountry, Me.Pos, true);
             _nextId += rest;
-            // starting ITs: about one per 30 people, but never more than 100 in all
-            int its = ItTarget();
+            Endless = EndlessChoice;
+            Watching = null;
+            // starting ITs: about one per 30 people, but never more than 100 in all (Endless: everyone tags, no IT)
+            int its = Endless ? 0 : ItTarget();
             var pool = new List<Agent>(_agents);
             for (int i = 0; i < its && pool.Count > 0; i++)
             {
@@ -234,7 +255,7 @@ namespace TagGame.Mega
                 SetIt(pool[k], true);
                 pool.RemoveAt(k);
             }
-            _crowd.SetIts(Mathf.Max(0, TotalItTarget - _its.Count));
+            _crowd.SetIts(Endless ? 0 : Mathf.Max(0, TotalItTarget - _its.Count));
             _elapsed = 0f;
             TimeLeft = RoundSeconds;
             _countdownUntil = Time.time + 3f;
@@ -244,6 +265,7 @@ namespace TagGame.Mega
             Debug.Log("[Mega] round start in " + c.Name + ": spawn " + MegaWorld.Spawn.ToString("F0") + "  full bots " + (_agents.Count - 1) + "  spawn fallbacks " + _spawnFallbacks + "  crowd " + _crowd.Count);
             AddFeed("Welcome to " + c.Name + "!  " + TotalPlayers.ToString("N0") + " players, " + ItCount.ToString("N0") + " IT");
             AddFeed("Planes at the airport fly you to other countries (E)");
+            if (Endless) AddFeed("ENDLESS: everyone tags everyone. Tagged? You're out until whoever got you is tagged.");
         }
 
         private int TotalItTarget => (int)System.Math.Max(1, System.Math.Min(MaxIts, TotalPlayers / 30));
@@ -319,6 +341,9 @@ namespace TagGame.Mega
             TagPopup.SetStatus("");
             MegaWorld.OnShift -= OnShift;
             if (WorldTravel.I != null) WorldTravel.I.EndAll();
+            if (MegaCars.I != null) MegaCars.I.EndAll();
+            if (Watching != null) { var fc = FindFirstObjectByType<FollowCamera>(); if (fc != null) fc.SetTarget(_player.transform); Watching = null; }
+            if (_myRenderers != null) foreach (var r in _myRenderers) if (r != null) r.enabled = true;
             if (MapManager.I != null) MapManager.I.LoadSelected();
             MegaWorld.OriginX = 0; MegaWorld.OriginZ = 0;
             _player.Frozen = false;
@@ -371,6 +396,7 @@ namespace TagGame.Mega
         {
             if (Me == null) return 0;
             long r = 1;
+            if (Endless) { foreach (var a in _agents) if (a != Me && a.Tags > Me.Tags) r++; return r; }
             foreach (var a in _agents) if (a != Me && a.Safe > Me.Safe) r++;
             if (CrowdMode) r += _crowd.RankAbove;
             // the counted rest of the world: with at most 100 taggers among them, nearly all of them are never IT,
@@ -417,8 +443,10 @@ namespace TagGame.Mega
         /// <summary>A full bot far away goes back into the crowd.</summary>
         private void Demote(Agent a)
         {
+            if (a.Out) return;
             _crowd.Add(a.Pos, a.Safe, a.It, a.ColorIdx, a.Id);
             RemoveBot(a);
+            ReviveOutBy(a);
             _demoted++;
         }
 
@@ -533,7 +561,108 @@ namespace TagGame.Mega
 
         // ================================================================== rules
 
-        private float TagRadius(Agent victim) => (victim.Knocked || victim.Untied || victim.Tying) ? 2.4f : 1.45f;
+        private float TagRadius(Agent victim) => ((victim.Knocked || victim.Untied || victim.Tying || victim.Dancing) ? 2.4f : 1.45f) + (victim.InCar ? 1.3f : 0f);
+
+        // ================================================================== Endless mode
+
+        private void EndlessTagging()
+        {
+            foreach (var kv in _hash) { kv.Value.Clear(); _listPool.Push(kv.Value); }
+            _hash.Clear();
+            foreach (var a in _agents)
+            {
+                if (a.Out || a.Away || a.CarMoving) continue;
+                long k = HKey(Mathf.FloorToInt(a.Pos.x / HCell), Mathf.FloorToInt(a.Pos.z / HCell));
+                if (!_hash.TryGetValue(k, out var list)) { list = _listPool.Count > 0 ? _listPool.Pop() : new List<Agent>(); _hash[k] = list; }
+                list.Add(a);
+            }
+            float now = Time.time;
+            int n = _agents.Count, start = n > 0 ? Random.Range(0, n) : 0;
+            for (int s = 0; s < n; s++)
+            {
+                var a = _agents[(start + s) % n];
+                if (a.Out || a.Away || a.CarMoving || a.Knocked || a.Removed) continue;
+                int cx = Mathf.FloorToInt(a.Pos.x / HCell), cz = Mathf.FloorToInt(a.Pos.z / HCell);
+                Agent hit = null;
+                for (int x = cx - 1; x <= cx + 1 && hit == null; x++)
+                    for (int z = cz - 1; z <= cz + 1 && hit == null; z++)
+                    {
+                        if (!_hash.TryGetValue(HKey(x, z), out var list)) continue;
+                        foreach (var v in list)
+                        {
+                            if (v == a || v.Out || now < v.SafeUntil) continue;
+                            if (Mathf.Abs(v.Pos.y - a.Pos.y) > 1.6f) continue;
+                            float r = TagRadius(v);
+                            float dx = v.Pos.x - a.Pos.x, dz = v.Pos.z - a.Pos.z;
+                            if (dx * dx + dz * dz < r * r) { hit = v; break; }
+                        }
+                    }
+                if (hit == null || now < a.SafeUntil) continue;
+                // two people touch: whoever was running at the other one tags them
+                Vector3 ab = hit.Pos - a.Pos; ab.y = 0f; ab.Normalize();
+                float va = Vector3.Dot(a.Vel, ab), vb = Vector3.Dot(hit.Vel, -ab);
+                if (hit.Knocked || hit.Untied || hit.Tying || hit.Dancing) vb = -1f;
+                Agent tagger = va >= vb ? a : hit, victim = tagger == a ? hit : a;
+                if (victim.Out) continue;
+                TagOut(tagger, victim);
+            }
+        }
+
+        private void TagOut(Agent tagger, Agent victim)
+        {
+            victim.Out = true; victim.OutBy = tagger; victim.OutPos = victim.Pos;
+            victim.Tying = false; victim.Path = null; victim.Script = null; victim.HasGoal = false;
+            tagger.Tags++;
+            float dist = Me != null ? Vector3.Distance(victim.Pos, Me.Pos) : 0f;
+            if (dist < 60f || tagger.IsPlayer || victim.IsPlayer)
+            {
+                GameAudio.Play("tag", tagger.IsPlayer || victim.IsPlayer ? 1f : Mathf.Lerp(0.6f, 0.1f, dist / 60f), Random.Range(0.95f, 1.1f));
+                Fx.Burst(victim.Pos, victim.IsPlayer ? new Color(0.13f, 0.84f, 0.87f) : new Color(0.95f, 0.2f, 0.2f));
+            }
+            if (dist < 120f || tagger.IsPlayer || victim.IsPlayer) AddFeed(tagger.Name + " tagged " + victim.Name + " out");
+            if (tagger.IsPlayer) { FollowCamera.Shake(0.15f); TagPopup.Show("You tagged " + victim.Name + " out!  (" + tagger.Tags + " tags)", new Color(0.2f, 0.8f, 0.35f)); }
+            if (victim.IsPlayer) PlayerOut(tagger);
+            // everyone the victim had tagged out comes back
+            foreach (var a in _agents) if (a.Out && a.OutBy == victim) Revive(a);
+        }
+
+        private void PlayerOut(Agent by)
+        {
+            GameAudio.Play("it", 0.8f); FollowCamera.Shake(0.35f);
+            TagPopup.Show(by.Name + " tagged you out!  Watch them - you're back when they get tagged", new Color(0.6f, 0.3f, 0.9f));
+            if (MegaCars.I != null && MegaCars.I.Driving) MegaCars.I.Exit();
+            _player.Frozen = true;
+            _myRenderers = _player.GetComponentsInChildren<Renderer>();
+            foreach (var r in _myRenderers) r.enabled = false;
+            Watch(by);
+        }
+
+        private void Watch(Agent who)
+        {
+            Watching = who;
+            if (_watchProxy == null) _watchProxy = new GameObject("WatchCam").transform;
+            _watchProxy.position = who.Pos + Vector3.up;
+            var cam = FindFirstObjectByType<FollowCamera>();
+            if (cam != null) cam.SetTarget(who.IsPlayer ? _player.transform : _watchProxy);
+        }
+
+        private void Revive(Agent a)
+        {
+            a.Out = false; a.OutBy = null;
+            a.SafeUntil = Time.time + 2.5f;
+            if (!a.IsPlayer) { a.Pos = a.OutPos; return; }
+            Watching = null;
+            var cam = FindFirstObjectByType<FollowCamera>();
+            if (cam != null) cam.SetTarget(_player.transform);
+            if (_myRenderers != null) foreach (var r in _myRenderers) if (r != null) r.enabled = true;
+            _player.Frozen = false;
+            _player.TeleportTo(a.OutPos + Vector3.up * 1.1f, _player.transform.rotation);
+            GameAudio.Play("whistle", 0.6f, 1.3f);
+            TagPopup.Show("You're back in!  Go get them", new Color(0.2f, 0.8f, 0.35f));
+        }
+
+        /// <summary>Whoever was watching someone who just left (went back into the crowd) comes back too.</summary>
+        private void ReviveOutBy(Agent gone) { foreach (var a in _agents) if (a.Out && a.OutBy == gone) Revive(a); }
 
         private void TryTag(Agent it, Agent victim)
         {
@@ -598,7 +727,7 @@ namespace TagGame.Mega
                 Agent best = null; float bt = wall;
                 foreach (var a in Gather(_coarse, origin, bt, _tmpA))
                 {
-                    if (a == shooter || a.Knocked) continue;
+                    if (a == shooter || a.Knocked || a.Out || a.CarMoving) continue;
                     Vector3 c = a.Pos + Vector3.up * 1.0f;
                     Vector3 oc = c - origin;
                     float t = Vector3.Dot(oc, d);
@@ -677,13 +806,13 @@ namespace TagGame.Mega
 
             float dt = Time.deltaTime;
             _elapsed += dt;
-            TimeLeft = Mathf.Max(0f, RoundSeconds - _elapsed);
+            TimeLeft = Endless ? RoundSeconds : Mathf.Max(0f, RoundSeconds - _elapsed);
             _frame++;
             _pathBudget = 3; _losBudget = 24;
 
             foreach (var a in _agents)
             {
-                if (!a.It && !a.Away) a.Safe += dt;
+                if (!a.It && !a.Away && !Endless) a.Safe += dt;
                 if (a.Hp <= 0f && !a.Knocked) { a.Hp = 70f; }   // got back up
                 if (a.Tying && Time.time >= a.TieDoneAt) { a.Tying = false; a.Untied = false; if (a.IsPlayer) { GameAudio.Play("tie", 0.8f); TagPopup.Show("Laces tied!", new Color(0.2f, 0.8f, 0.35f)); } }
             }
@@ -704,13 +833,25 @@ namespace TagGame.Mega
                 if (every > 1 && (a.Id + _frame) % every != 0) continue;
                 float step = Mathf.Min(a.Accum, 0.5f);
                 a.Accum = 0f;
+                Vector3 before = a.Pos;
                 TickBot(a, step, d2 < 150f * 150f);
+                a.Vel = (a.Pos - before) / Mathf.Max(step, 0.0001f);
                 if (a.Proxy != null) a.Proxy.transform.position = a.Pos;
             }
 
-            Tagging();
-            KeepItCount();
+            Me.Vel = _player.Controller != null && _player.Controller.enabled ? _player.Controller.velocity : Vector3.zero;
+            if (Endless) EndlessTagging(); else { Tagging(); KeepItCount(); }
             CrowdStep(); AdjustCap();
+            if (Watching != null && _watchProxy != null) _watchProxy.position = Watching.Pos + Vector3.up;
+            if (Endless)
+            {
+                int alive = 0; foreach (var a in _agents) if (!a.Out) alive++;
+                TagPopup.SetStatus(Me.Out
+                    ? "<color=#B070FF>YOU'RE OUT</color>  watching " + (Watching != null ? Watching.Name : "?") + " - you're back when they get tagged"
+                    : "<color=#FF5050>ENDLESS</color>  tag anyone!  -  your tags <b>" + Me.Tags + "</b>  -  " + alive + " still in near you");
+                Draw();
+                return;
+            }
 
             // status line + the minimap's red ring on the nearest IT
             Agent near = null; float nd = float.MaxValue;
@@ -761,7 +902,7 @@ namespace TagGame.Mega
             _hash.Clear();
             foreach (var a in _agents)
             {
-                if (a.It || a.Away) continue;
+                if (a.It || a.Away || a.CarMoving) continue;
                 long k = HKey(Mathf.FloorToInt(a.Pos.x / HCell), Mathf.FloorToInt(a.Pos.z / HCell));
                 if (!_hash.TryGetValue(k, out var list)) { list = _listPool.Count > 0 ? _listPool.Pop() : new List<Agent>(); _hash[k] = list; }
                 list.Add(a);
@@ -770,7 +911,7 @@ namespace TagGame.Mega
             {
                 if (i >= _its.Count) continue;
                 var it = _its[i];
-                if (it.Busy || it.Away) continue;
+                if (it.Busy || it.Away || it.CarMoving) continue;
                 int cx = Mathf.FloorToInt(it.Pos.x / HCell), cz = Mathf.FloorToInt(it.Pos.z / HCell);
                 Agent hitA = null;
                 for (int x = cx - 1; x <= cx + 1 && hitA == null; x++)
@@ -940,6 +1081,25 @@ namespace TagGame.Mega
         {
             float now = Time.time;
             a.WantSprint = false;
+            if (Endless)
+            {
+                // everyone hunts: chase whoever is closest (you a bit more often), sprint when close
+                Agent prey = null; float pd = 70f * 70f;
+                foreach (var o in Gather(_coarse, a.Pos, 70f, _tmpB))
+                {
+                    if (o == a || o.Out || o.Away || o.CarMoving) continue;
+                    float d = (o.Pos - a.Pos).sqrMagnitude * (o.IsPlayer ? 0.7f : 1f) * (o.Knocked || o.Untied ? 0.5f : 1f);
+                    if (Mathf.Abs(o.Pos.y - a.Pos.y) > 2f) d *= 3f;
+                    if (d < pd) { pd = d; prey = o; }
+                }
+                a.Target = prey;
+                if (prey != null) { a.Goal = prey.Pos; a.HasGoal = true; a.WantSprint = pd < 25f * 25f; return; }
+            }
+            else if (!a.It && near && Random.value < 0.02f && NearestIt(a, 45f) == null)
+            {
+                a.DanceUntil = now + Random.Range(2.5f, 4f); a.DanceType = Random.Range(0, 6); a.HasGoal = false;
+                return;
+            }
             if (a.It)
             {
                 // chase the nearest runner (you a bit more often when you're close)
@@ -1135,6 +1295,7 @@ namespace TagGame.Mega
             }
             float stepLen = speed * dt;
             Vector3 np = a.Pos + dir * Mathf.Min(stepLen, dist);
+            if (a.Floor == 0 && MegaCars.PedBlocked(a.Pos, np)) return;   // wait for the green light
             if (found && Free(a, np.x, np.z)) a.Pos = np;
             else if (Free(a, np.x, a.Pos.z)) a.Pos.x = np.x;
             else if (Free(a, a.Pos.x, np.z)) a.Pos.z = np.z;
@@ -1293,7 +1454,7 @@ namespace TagGame.Mega
             float detail2 = _instanced ? 110f * 110f : 70f * 70f, shadow2 = _instanced ? 80f * 80f : 40f * 40f;
             foreach (var a in _agents)
             {
-                if (a.IsPlayer) continue;
+                if (a.IsPlayer || a.Out) continue;
                 Vector3 to = a.Pos - cp;
                 float d2 = to.sqrMagnitude;
                 if (d2 > maxD * maxD) continue;
@@ -1308,6 +1469,7 @@ namespace TagGame.Mega
                     continue;
                 }
                 float bob = a.HasGoal ? Mathf.Abs(Mathf.Sin(Time.time * 9f + a.Id)) * 0.08f : 0f;
+                if (a.Dancing) { MegaDance.Pose(a.DanceType, Time.time + a.Id, out var extra, out float lift); rot = rot * extra; bob += lift; }
                 Vector3 c = a.Pos + Vector3.up * (1f + bob);
                 Put(_capsule, body, Matrix4x4.TRS(c, rot, Vector3.one), d2 < shadow2);
                 if (d2 < detail2)
@@ -1337,7 +1499,7 @@ namespace TagGame.Mega
             float cos = Mathf.Cos(coneDeg * Mathf.Deg2Rad);
             foreach (var a in Gather(_coarse, origin, range, _tmpA))
             {
-                if (a.IsPlayer || a.Knocked) continue;
+                if (a.IsPlayer || a.Knocked || a.Out) continue;
                 Vector3 to = a.Pos + Vector3.up - origin;
                 float d = to.magnitude;
                 if (d > range || d < 0.5f) continue;
