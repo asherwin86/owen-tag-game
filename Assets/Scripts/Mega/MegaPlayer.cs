@@ -67,6 +67,10 @@ namespace TagGame.Mega
 
             if ((kb != null && kb.escapeKey.wasPressedThisFrame) || (pad != null && pad.startButton.wasPressedThisFrame)) g.TogglePause();
             if (g.Paused || g.Finished) return;
+            // in a plane, in a car or tagged out: the slot, fire and use buttons belong to those (the car uses the D-pad for indicators)
+            if (WorldTravel.I != null && WorldTravel.I.InPlane) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
+            if (MegaCars.I != null && MegaCars.I.Driving) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
+            if (_me.Out) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
 
             // slots
             if (kb != null)
@@ -88,9 +92,8 @@ namespace TagGame.Mega
             }
             if (Time.frameCount - TouchSlotFrame <= 1) SelectSlot((Selected + 1) % 4);
 
-            if (WorldTravel.I != null && WorldTravel.I.InPlane) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
             float now = Time.time, dt = Time.deltaTime;
-            bool frozen = g.CountingDown || _me.Knocked || now < _me.FrozenUntil || _me.Tying;
+            bool frozen = g.CountingDown || _me.Knocked || now < _me.FrozenUntil || _me.Tying || _me.Dancing;
             _pc.Frozen = frozen;
 
             // shoelaces
@@ -125,7 +128,17 @@ namespace TagGame.Mega
             _pc.SprintBlocked = _me.Untied;
             if (SneakersOn && !_me.Untied) _pc.Boost(1f, 0.1f);
 
-            if (frozen) { Prompt = _me.Knocked ? "KNOCKED DOWN" : (_me.Tying ? "Tying your laces..." : ""); Locked = null; return; }
+            if (frozen) { _lastFeet = Feet(); Prompt = _me.Knocked ? "KNOCKED DOWN" : (_me.Tying ? "Tying your laces..." : ""); Locked = null; return; }
+
+            // traffic lights: on foot you have to wait for green at a crossing too
+            Vector3 feet = Feet();
+            if (_lastFeet != Vector3.zero && (feet - _lastFeet).sqrMagnitude < 4f && MegaCars.PedBlocked(_lastFeet, feet))
+            {
+                _pc.TeleportTo(transform.position - (feet - _lastFeet), transform.rotation);
+                feet = _lastFeet;
+                if (now >= _redMsgAt) { _redMsgAt = now + 2.5f; TagPopup.Show("Red light!  Wait for green to cross", new Color(0.9f, 0.2f, 0.2f)); GameAudio.Play("beep", 0.4f, 0.7f); }
+            }
+            _lastFeet = feet;
 
             // pick up things you walk over
             _swapItem = null;
@@ -189,6 +202,9 @@ namespace TagGame.Mega
         }
 
         private bool _touchFireWas;
+        private Vector3 _lastFeet;
+        private float _redMsgAt;
+        private Vector3 Feet() => transform.position - Vector3.up * (_pc.Controller != null ? _pc.Controller.height * 0.5f - _pc.Controller.center.y : 1f);
 
         private int FreeSlot()
         {

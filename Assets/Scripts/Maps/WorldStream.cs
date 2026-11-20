@@ -49,7 +49,7 @@ namespace TagGame.Maps
             _lods.Clear();
         }
 
-        private static long Key(int country, int ci, int cj) => ((long)country << 40) | ((long)(ci + 1000) << 20) | (long)(cj + 1000);
+        private static long Key(int country, int ci, int cj) => ((long)country << 56) | ((long)(ci + 1000) << 28) | (long)(cj + 1000);
 
         private Vector3 FocusPos()
         {
@@ -152,7 +152,7 @@ namespace TagGame.Maps
             {
                 var c = MegaWorld.Countries[k];
                 double x0 = c.CX - c.Half, z0 = c.CZ - c.Half;
-                int n = Mathf.RoundToInt(c.Half * 2f / MegaWorld.ChunkSize);
+                int n = (int)System.Math.Round(c.Half * 2.0 / MegaWorld.ChunkSize);
                 int a0 = (int)System.Math.Floor((wx - r - x0) / MegaWorld.ChunkSize), a1 = (int)System.Math.Floor((wx + r - x0) / MegaWorld.ChunkSize);
                 int b0 = (int)System.Math.Floor((wz - r - z0) / MegaWorld.ChunkSize), b1 = (int)System.Math.Floor((wz + r - z0) / MegaWorld.ChunkSize);
                 a0 = Mathf.Max(a0, 0); b0 = Mathf.Max(b0, 0); a1 = Mathf.Min(a1, n - 1); b1 = Mathf.Min(b1, n - 1);
@@ -194,7 +194,7 @@ namespace TagGame.Maps
             for (int k = 0; k < MegaWorld.Countries.Length; k++)
             {
                 var c = MegaWorld.Countries[k];
-                int n = Mathf.CeilToInt(c.Half * 2f / 2000f);
+                int n = (int)System.Math.Ceiling(c.Half * 2.0 / 2000.0);
                 double x0 = c.CX - c.Half, z0 = c.CZ - c.Half;
                 int a0 = Mathf.Max(0, (int)System.Math.Floor((wx - LodRadius - x0) / 2000.0)), a1 = Mathf.Min(n - 1, (int)System.Math.Floor((wx + LodRadius - x0) / 2000.0));
                 int b0 = Mathf.Max(0, (int)System.Math.Floor((wz - LodRadius - z0) / 2000.0)), b1 = Mathf.Min(n - 1, (int)System.Math.Floor((wz + LodRadius - z0) / 2000.0));
@@ -277,10 +277,10 @@ namespace TagGame.Maps
             int k = MegaWorld.CountryAt(wx, wz);
             if (k < 0) return MegaWorld.SeaLevel;
             var c = MegaWorld.Countries[k];
-            float lx = (float)(wx - c.CX), lz = (float)(wz - c.CZ);
-            int ci = Mathf.FloorToInt((lx + c.Half) / MegaWorld.ChunkSize), cj = Mathf.FloorToInt((lz + c.Half) / MegaWorld.ChunkSize);
+            double lx = wx - c.CX, lz = wz - c.CZ;
+            int ci = (int)System.Math.Floor((lx + c.Half) / MegaWorld.ChunkSize), cj = (int)System.Math.Floor((lz + c.Half) / MegaWorld.ChunkSize);
             var kind = MapManager.KindOf(c, ci, cj);
-            float inX = lx + c.Half - ci * MegaWorld.ChunkSize, inZ = lz + c.Half - cj * MegaWorld.ChunkSize;
+            float inX = (float)(lx + c.Half - (double)ci * MegaWorld.ChunkSize), inZ = (float)(lz + c.Half - (double)cj * MegaWorld.ChunkSize);
             int bi = Mathf.Clamp(Mathf.FloorToInt(inX / 100f), 0, 4), bj = Mathf.Clamp(Mathf.FloorToInt(inZ / 100f), 0, 4);
             float bx = inX - bi * 100f, bz = inZ - bj * 100f;
             if (bx < 10f || bx > 90f || bz < 10f || bz > 90f) return 0f;   // over a street
