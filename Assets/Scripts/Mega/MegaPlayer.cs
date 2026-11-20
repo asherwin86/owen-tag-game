@@ -67,6 +67,10 @@ namespace TagGame.Mega
 
             if ((kb != null && kb.escapeKey.wasPressedThisFrame) || (pad != null && pad.startButton.wasPressedThisFrame)) g.TogglePause();
             if (g.Paused || g.Finished) return;
+            // in a plane, in a car or tagged out: the slot, fire and use buttons belong to those (the car uses the D-pad for indicators)
+            if (WorldTravel.I != null && WorldTravel.I.InPlane) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
+            if (MegaCars.I != null && MegaCars.I.Driving) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
+            if (_me.Out) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
 
             // slots
             if (kb != null)
@@ -88,9 +92,6 @@ namespace TagGame.Mega
             }
             if (Time.frameCount - TouchSlotFrame <= 1) SelectSlot((Selected + 1) % 4);
 
-            if (WorldTravel.I != null && WorldTravel.I.InPlane) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
-            if (MegaCars.I != null && MegaCars.I.Driving) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
-            if (_me.Out) { _pc.Frozen = true; Prompt = ""; Locked = null; return; }
             float now = Time.time, dt = Time.deltaTime;
             bool frozen = g.CountingDown || _me.Knocked || now < _me.FrozenUntil || _me.Tying || _me.Dancing;
             _pc.Frozen = frozen;
